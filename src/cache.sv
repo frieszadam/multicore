@@ -7,7 +7,7 @@ module cache #(
     parameter dma_data_width_p   // bus transfer size in words
 )(
     input  logic clk_i,
-    input  logic reset_i,
+    input  logic nreset_i,
 
     // Core Cache Interface
     input  logic            cc_valid_i,

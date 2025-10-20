@@ -8,10 +8,12 @@ typedef struct packed {
     logic [31:0] wdata; // write data
 } core_cache_pkt_t;
 
+`define DMA_DATA_WIDTH [(dma_data_width_p*32)-1:0]
+
 typedef struct packed {
     logic we;           // write enable bit
     logic [31:0] addr;
-    logic [(dma_data_width_p*32)-1:0] wdata; // write data
+    logic [`DMA_DATA_WIDTH] wdata; // write data
 } cache_bus_pkt_t;
 
 typedef struct packed {
