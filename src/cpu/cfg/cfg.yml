@@ -1,0 +1,38 @@
+# cfg.yml - Main hammer config file
+
+# Set top level for synthesis
+synthesis.inputs.top_module: "cache"
+
+# Don't synthesize these gate-level netlist modules
+synthesis.inputs.preserve_modules: []
+
+# Turn-off clock gating, issue with sky130 latch model in some clock gate cells
+# when coming out of x leading to failed simulations.
+synthesis.clock_gating_mode: ""
+
+par.innovus.floorplan_mode: "generateplusmanual"
+# REVISIT investigate
+#par.innovus.floorplan_script_contents: "
+#  create_fence -name guts/link_downstream -area 0 0 240 240 \ncreate_fence -name guts/link_upstream -area 365 365 500 500 \n"
+
+# Custom SDC constraints
+vlsi.inputs:
+  # You can add SDC constraints directly here (list of strings)
+  custom_sdc_constraints: []
+
+  # Additional SDC files to read
+  custom_sdc_files:
+
+  custom_sdc_files_meta: prependlocal # Prepend path of this config file!
+
+# Placement Constraints
+vlsi.inputs.placement_constraints:
+  - path: "TOP" # (this name isn't actually checked...)
+    type: toplevel
+    # Define chip dimensions
+    width:  500
+    height: 500
+    x: 0
+    y: 0
+    margins: {left: 0, right: 0, top: 0, bottom: 0}
+

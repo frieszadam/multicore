@@ -2,9 +2,9 @@
 // Hold counter for the block_size_p / dma_data_width_p to monitor when reqs complete 
 
 
-`include "cache.svh"
+`include "v/cache.svh"
 
-module bus (
+module bus #(
     parameter num_caches_p,      // number of caches in system
     parameter block_size_p,      // words per block
     parameter dma_data_width_p   // bus transfer size in words
@@ -45,9 +45,9 @@ module bus (
         end
     end
 
-    assign cb_data_o = mem_data_i;
+    assign cb_data_o   = mem_data_i;
     assign mem_valid_o = |cb_valid_i;
-    assign cb_yumi_o  = mem_ready_i & cb_valid_i;
+    assign cb_yumi_o   = mem_ready_i & cb_valid_i;
 
     generate
         if (num_caches_p == 1) begin

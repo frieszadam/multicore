@@ -1,4 +1,4 @@
-`include "cache.svh"
+`include "v/cache.svh"
 
 module cache #(
     parameter block_size_p,      // words per block
@@ -37,12 +37,12 @@ module cache #(
     localparam ways_size_lp     = $clog2(ways_p);
 
     // For indexing
-    localparam offset_size_lp   = $clog2(block_size_p / 8);
+    localparam offset_size_lp   = $clog2(block_size_p); // offset within block
     localparam index_size_lp    = $clog2(sets_p);
     localparam tag_size_lp      = 32 - offset_size_lp - index_size_lp;
 
     // Data transfer ratio
-    localparam dma_blk_ratio_lp = $clog(dma_data_width_p/block_size_p);
+    localparam dma_blk_ratio_lp = $clog2(dma_data_width_p/block_size_p);
 
     // lru, block_state, tag, data 
     cache_block_t [sets_p-1:0] [ways_p-1:0] cache_mem_r, cache_mem_n;
@@ -78,33 +78,33 @@ module cache #(
 
     logic tx_done, rx_done;
     logic read_write_miss, set_full, send_eviction;
-    logic [offset_size_lp] cc_pkt_r_offset;
+    logic [offset_size_lp+2:0] cc_pkt_r_offset; // because we left shift by three to convert byte to bit 
     logic [ways_size_lp-1:0] cc_ways_index, evict_block_way_index, evict_block_way_index_r, open_block_way_index;
+    logic [ways_p-1:0] block_state_invalid, block_hit;
     logic [31:0] evict_block_address;
     logic [(block_size_p*32)-1:0] cache_mem_rd_data_r, cache_mem_rd_data_n;
 
-    assign cc_pkt_r_offset = cc_pkt_r.addr[offset_size_lp-1:0] << 3;
+    assign cc_pkt_r_offset = cc_pkt_r.addr[offset_size_lp-1:0] <<< 3;
 
     always_comb begin
         read_write_miss = cc_valid_r;
-        for (int i = 0; i < ways_p; i++) begin
-            read_write_miss = read_write_miss & (block_tag_r[i] != cc_pkt_r.addr[31-:tag_size_lp]);
-        end
-
-        set_full = 1;
-        for (int i = 0; i < ways_p; i++) begin
-            set_full = set_full & (block_state_r[i] != s_invalid);
-        end
-
+        set_full = 1'b1;
         open_block_way_index = '0;
+
         for (int i = 0; i < ways_p; i++) begin
-            open_block_way_index = open_block_way_index || {ways_size_lp{block_state_r[i] == s_invalid}} & ways_size_lp'(i);
+            block_state_invalid[i] = block_state_r[i] == s_invalid;
+            block_hit[i] = ~block_state_invalid[i] & block_tag_r[i] == cc_pkt_r.addr[31-:tag_size_lp];
+
+            // not a miss if any valid way holds a matching tag
+            read_write_miss = read_write_miss & ~block_hit[i];
+            set_full = set_full & ~block_state_invalid[i];
+            open_block_way_index = open_block_way_index | ({ways_size_lp{block_state_invalid[i]}} & ways_size_lp'(i));
         end
     end
     
     // REVISIT LRU
     assign evict_block_way_index = '0;
-    assign evict_block_address = {block_tag_r[evict_block_way_index], cc_pkt_r.addr[offset_size_lp+:index_size_lp], offset_size_lp'0};
+    assign evict_block_address = {block_tag_r[evict_block_way_index], cc_pkt_r.addr[offset_size_lp+:index_size_lp], offset_size_lp'(0)};
 
     assign send_eviction = read_write_miss & set_full & block_state_r[evict_block_way_index] == s_modified;
 
@@ -116,11 +116,13 @@ module cache #(
         end
     end
 
-    assign cache_mem_rd_data_n = cache_mem_r[set_index][cc_ways_index].data;
-    
+
     // Cache State Logic
     typedef enum {s_idle, s_lookup, s_evict, s_allocate_req, s_allocate_rx, s_write, s_valid} cache_control_t;
     cache_control_t cache_state_r, cache_state_n;
+
+    // REVISIT only valid if dma_data_width_p == block_size_p else can make a shift register
+    assign cache_mem_rd_data_n = (cache_state_r == s_allocate_rx)? cb_data_i: cache_mem_r[set_index][cc_ways_index].data;
 
     always_comb begin
         case (cache_state_r)
@@ -160,7 +162,7 @@ module cache #(
     assign read_complete = cache_state_r == s_valid;
 
     assign cc_ready_o = cache_state_r == s_idle;
-    assign cc_valid_o = cache_state_r == s_valid;
+    assign cc_valid_o = cache_state_r == s_valid || write_complete;
 
     generate
         if (block_size_p != dma_data_width_p) begin : block_size_not_dma_data_width
@@ -179,6 +181,9 @@ module cache #(
             assign cb_pkt_o.wdata = cache_mem_rd_data_r;
         end
     endgenerate    
+
+    logic cache_mem_write;
+    assign cache_mem_write = cache_state_r == s_write || (cache_state_r == s_lookup & ~read_write_miss & cc_pkt_r.we);
 
     always_comb begin
         cache_mem_n = cache_mem_r;
@@ -209,7 +214,7 @@ module cache #(
         end
 
         // Upon a write, update the data and LRU fields
-        if (cache_state_r == s_write || (cache_state_r == s_lookup & ~read_write_miss & cc_pkt_r.we)) begin
+        if (cache_mem_write) begin
             cache_mem_n[set_index][cc_ways_index].block_state = s_modified;
             cache_mem_n[set_index][cc_ways_index].lru = 1'b0; // REVISIT LRU
 
@@ -232,13 +237,33 @@ module cache #(
         evict_block_way_index_r <= send_eviction? evict_block_way_index: evict_block_way_index_r;
     end
     
-    assign cc_rdata_o = cache_mem_rd_data_r;
+    assign cc_rdata_o = cache_mem_rd_data_r[cc_pkt_r_offset +: 32] & {32{~write_complete}};
     assign cb_pkt_o.we = cache_state_r == s_evict;
-    assign cb_pkt_o.addr = cache_state_r == s_evict? evict_block_address: {cc_pkt_r.addr[31:offset_size_lp], offset_size_lp'0};
+    assign cb_pkt_o.addr = cache_state_r == s_evict? evict_block_address: {cc_pkt_r.addr[31:offset_size_lp], offset_size_lp'(0)};
     assign cb_valid_o = cache_state_r == s_evict || cache_state_r == s_allocate_req || read_write_miss & ~set_full ;
 
     // Embedded SVAs
     `ifndef DISABLE_TESTING
+        
+        // Signals for viewing Verdi (structs not supported)
+        logic cc_pkt_we_i;
+        logic [3:0] cc_pkt_be_i;
+        logic [31:0] cc_pkt_addr_i, cc_pkt_wdata_i;
+
+        assign cc_pkt_we_i = cc_pkt_i.we;
+        assign cc_pkt_be_i = cc_pkt_i.be;
+        assign cc_pkt_addr_i = cc_pkt_i.addr;
+        assign cc_pkt_wdata_i = cc_pkt_i.wdata;
+
+        logic cb_pkt_we_o;
+        logic [31:0] cb_pkt_addr_o;
+        logic [(dma_data_width_p*32)-1:0] cb_pkt_wdata_o;
+
+        assign cb_pkt_we_o = cb_pkt_o.we;
+        assign cb_pkt_addr_o = cb_pkt_o.addr;
+        assign cb_pkt_wdata_o = cb_pkt_o.wdata;
+
+        // Auxilliary testing code
         logic be_non_contig;
         always_comb begin
             case (cc_pkt_i.be)
@@ -254,37 +279,59 @@ module cache #(
             endcase
         end
 
-        always_ff @(posedge clk_i) begin
-            if (nreset_i) begin
-                assert(~(cc_valid_i & be_non_contig))
-                    else $error("Byte enable cannot have non-contiguous 1s");
+        // Properties
+        property p_main_mem_rx;
+            @(posedge clk_i) cb_valid_i |-> cache_state_r == s_allocate_rx;
+        endproperty
 
-                assert(~(cache_state_r == s_lookup & $past(cache_state_r) == s_lookup))
-                        else $error("Cache cannot stay in s_lookup for multiple cycles");
+        property p_be_contiguous;
+            @(posedge clk_i) cc_valid_i |-> ~be_non_contig;
+        endproperty
 
-                assert(~(cb_valid_i && cache_state_r != s_allocate_rx))
-                        else $error("Should only receive main memory tx when expected");
+        property p_s_lookup_self_loop;
+            @(posedge clk_i) cache_state_r == s_lookup |=> cache_state_r != s_lookup;
+        endproperty
 
-                // Latching of status signals should only occur in s_lookup stage
-                if (cache_state_r != s_lookup) begin
-                    assert(cc_ways_index == $past(cc_ways_index_r))
-                        else $error("cc_ways_index cannot change during processing");
-                        
-                    assert(read_write_miss == $past(read_write_miss))
-                        else $error("read_write_miss cannot change during processing");
+        property p_cc_ways_index_latch;
+            @(posedge clk_i) (cache_state_r != s_lookup) |-> cc_ways_index == $past(cc_ways_index);
+        endproperty
 
-                    assert(set_full == $past(set_full))
-                        else $error("set_full cannot change during processing");
-                end
+        property p_read_write_miss_latch;
+            @(posedge clk_i) (cache_state_r != s_lookup) |-> read_write_miss == $past(read_write_miss);
+        endproperty
 
-                if ($past(cache_state_r) != s_lookup && ~($past(cache_state_r) == s_allocate_rx && cache_state_r == s_valid)) begin
-                    assert(cache_mem_rd_data_r == $past(cache_mem_rd_data_r))
-                        else $error("cache_mem_rd_data_r cannot change unless after initial read or last process");
-                end
+        property p_set_full_latch;
+            @(posedge clk_i) (cache_state_r != s_lookup) |-> set_full == $past(set_full);
+        endproperty
 
-                // block size and transfer size must be evenly divisible
-            end
-        end
+        property p_s_lookup_latch;
+            @(posedge clk_i) p_set_full_latch and p_read_write_miss_latch and p_cc_ways_index_latch;
+        endproperty
+
+        property p_cache_mem_rd_data_latch;
+            @(posedge clk_i) (cache_state_r != s_lookup && ~(cache_state_r == s_allocate_rx && cache_state_n == s_valid)) |=>
+                cache_mem_rd_data_r == $past(cache_mem_rd_data_r);
+        endproperty
+
+        // Property assertions
+        a_main_mem_rx: assert property (p_main_mem_rx)
+            else $error("Assertion failure: Cannot receive memory response unless in s_allocate_rx.");
+
+        a_be_contiguous: assert property (p_be_contiguous)
+            else $error("Assertion failure: Byte enable must be contiguous.");
+
+        a_s_lookup_latch: assert property (p_s_lookup_latch)
+            else $error("Assertion failure: Status signals must only change on transition to s_lookup.");
+
+        a_s_lookup_self_loop: assert property (p_s_lookup_self_loop)
+            else $error("Assertion failure: State cannot stay in s_lookup for more than a cycle.");
+
+        a_rd_data_latch: assert property (p_cache_mem_rd_data_latch)
+            else $error("Assertion failure: Cache read data cannot change unless due to read.");
+
+        // REVISIT (coverage)
+
+
     `endif
 
     // END block state logic

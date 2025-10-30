@@ -1,0 +1,119 @@
+Magic 271485
+Revision Verdi_Q-2020.03-SP2-8
+
+; Window Layout <x> <y> <width> <height> <signalwidth> <valuewidth>
+viewPort 0 25 1512 492 175 134
+
+; File list:
+; openDirFile [-d delimiter] [-s time_offset] [-rf auto_bus_rule_file] path_name file_name
+openDirFile -d / "" "/home/agfriesz/ee544/src/cache/build/sim-rtl-rundir/waveform.fsdb"
+
+; file time scale:
+; fileTimeScale ### s|ms|us|ns|ps
+
+; signal spacing:
+signalSpacing 5
+
+; windowTimeUnit is used for zoom, cursor & marker
+; waveform viewport range
+zoom 0.000000 469321.007156
+cursor 92000.000000
+marker 0.000000
+
+; user define markers
+; userMarker time_pos marker_name color linestyle
+; visible top row signal index
+top 14
+; marker line index
+markerPos 52
+
+; event list
+; addEvent event_name event_expression
+; curEvent event_name
+
+
+
+COMPLEX_EVENT_BEGIN
+
+
+COMPLEX_EVENT_END
+
+
+
+; toolbar current search type
+; curSTATUS search_type
+curSTATUS ByChange
+
+
+addGroup "G1"
+activeDirFile "" "/home/agfriesz/ee544/src/cache/build/sim-rtl-rundir/waveform.fsdb"
+addSignal -h 15 /cache_tb/dut/clk_i
+addSignal -h 15 -holdScope nreset_i
+addGroup "G2"
+addSignal -h 15 /cache_tb/dut/cc_valid_i
+addSignal -h 15 -holdScope cc_ready_o
+addSignal -h 15 -holdScope cc_pkt_we_i
+addSignal -h 15 -holdScope cc_pkt_be_i[3:0]
+addSignal -h 15 -holdScope cc_pkt_addr_i[31:0]
+addSignal -h 15 -holdScope cc_pkt_wdata_i[31:0]
+addGroup "G7"
+addSignal -h 15 /cache_tb/dut/cc_valid_o
+addSignal -h 15 -holdScope cc_yumi_i
+addSignal -h 15 -holdScope cc_rdata_o[31:0]
+addGroup "G3"
+addSignal -h 15 /cache_tb/dut/cb_valid_o
+addSignal -h 15 -holdScope cb_yumi_i
+addSignal -h 15 -holdScope cb_pkt_we_o
+addSignal -h 15 -holdScope cb_pkt_addr_o[31:0]
+addSignal -h 15 -holdScope cb_pkt_wdata_o
+addGroup "G8"
+addSignal -h 15 /cache_tb/dut/cb_valid_i
+addSignal -h 15 -holdScope cb_data_i[511:0]
+addGroup "G4" -e FALSE
+addSignal -h 15 /cache_tb/core_intf_trace_replay/reset_i
+addSignal -h 15 -holdScope en_i
+addSignal -h 15 -holdScope v_i
+addSignal -h 15 -holdScope data_i[97:0]
+addSignal -h 15 -holdScope ready_o
+addGroup "G5" -e FALSE
+addSignal -h 15 /cache_tb/core_intf_trace_replay/v_o
+addSignal -h 15 -holdScope data_o[97:0]
+addSignal -h 15 -holdScope yumi_i
+addSignal -h 15 -holdScope rom_addr_o[14:0]
+addSignal -h 15 -holdScope rom_data_i[101:0]
+addSignal -h 15 -holdScope done_o
+addSignal -h 15 -holdScope error_o
+addGroup "G6" -e FALSE
+addSignal -h 15 /cache_tb/core_intf_trace_rom/addr_i[14:0]
+addSignal -h 15 -holdScope data_o[101:0]
+addGroup "G9" -e FALSE
+addSignal -h 15 /cache_tb/main_mem/mem_valid_i
+addSignal -h 15 -holdScope mem_ready_o
+addSignal -h 15 -holdScope mem_valid_o
+addSignal -h 15 -holdScope mem_we_i
+addSignal -h 15 -holdScope mem_addr_i[31:0]
+addSignal -h 15 -holdScope mem_wdata_i[511:0]
+addSignal -h 15 -holdScope mem_data_o[511:0]
+addGroup "G10"
+addSignal -h 15 -UNSIGNED /cache_tb/dut/cache_state_r[31:0]
+addGroup "G11"
+addSignal -h 15 /cache_tb/dut/read_write_miss
+addSignal -h 15 -holdScope set_full
+addGroup "G12"
+
+; getSignalForm Scope Hierarchy Status
+; active file of getSignalForm
+activeDirFile "" "/home/agfriesz/ee544/src/cache/build/sim-rtl-rundir/waveform.fsdb"
+
+GETSIGNALFORM_SCOPE_HIERARCHY_BEGIN
+getSignalForm close
+
+"/_vcs_unit__2617753513"
+
+SCOPE_LIST_BEGIN
+"/_vcs_unit__2617753513"
+SCOPE_LIST_END
+
+GETSIGNALFORM_SCOPE_HIERARCHY_END
+
+
