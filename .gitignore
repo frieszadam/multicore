@@ -3,3 +3,6 @@
 **/novas*
 **/output.json
 archive/*
+**/hammer.log
+**.tr
+**/*rom.v

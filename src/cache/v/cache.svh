@@ -29,13 +29,13 @@ typedef struct packed {
 
 typedef enum logic [1:0] {s_invalid, s_exclusive, s_shared, s_modified} block_state_t;
 
-// REVISIT hardcode (tag_size_p = 10), (block_size_p = 16)
+// REVISIT hardcode (tag_size_p = 22), (block_size_p = 16)
 
 typedef struct packed {
     logic lru;
     block_state_t block_state;
-    logic [10-1:0] tag;
-    logic [16-1:0] data;
+    logic [22-1:0] tag;
+    logic [(32*16)-1:0] data;
 } cache_block_t;
 
 `endif

@@ -13,10 +13,10 @@ module cache_tb ();
     localparam ring_width_lp = 98;
     localparam rom_addr_width_lp = 15;
     
-    localparam block_size_lp = 16;
+    localparam block_width_lp = 16;
     localparam sets_lp = 16;
     localparam ways_lp = 2;
-    localparam dma_data_width_lp = block_size_lp;
+    localparam dma_data_width_lp = block_width_lp;
 
     localparam mem_addr_width_lp = 15;
     localparam num_caches_lp = 1;
@@ -43,7 +43,7 @@ module cache_tb ();
     logic [`DMA_DATA_WIDTH] mem_rdata, mem_wdata;
 
     cache #(
-        .block_size_p(block_size_lp),
+        .block_width_p(block_width_lp),
         .sets_p(sets_lp),
         .ways_p(ways_lp),
         .dma_data_width_p(dma_data_width_lp)
@@ -77,7 +77,7 @@ module cache_tb ();
 
     bsg_nonsynth_reset_gen #(
         .num_clocks_p(1)
-        ,.reset_cycles_lo_p(1)
+        ,.reset_cycles_lo_p(0)
         ,.reset_cycles_hi_p(10)
     ) reset_gen (
         .clk_i(clk)
@@ -107,7 +107,7 @@ module cache_tb ();
 
     bus #(
         .num_caches_p(num_caches_lp),
-        .block_size_p(block_size_lp),
+        .block_width_p(block_width_lp),
         .dma_data_width_p(dma_data_width_lp)
     ) cache_mem_bus (
         .clk_i(clk),
@@ -180,7 +180,7 @@ module cache_tb ();
 
   initial begin
     $display("[START] Starting Simulation");
-    repeat(10) begin
+    repeat(11) begin
       @(posedge clk);
     end
 

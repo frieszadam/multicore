@@ -1,12 +1,12 @@
 // REVISIT ADD SPEC
-// Hold counter for the block_size_p / dma_data_width_p to monitor when reqs complete 
+// Hold counter for the block_width_p / dma_data_width_p to monitor when reqs complete 
 
 
 `include "v/cache.svh"
 
 module bus #(
     parameter num_caches_p,      // number of caches in system
-    parameter block_size_p,      // words per block
+    parameter block_width_p,      // words per block
     parameter dma_data_width_p   // bus transfer size in words
 ) (
     input  logic clk_i, // REVISIT MULTICORE INTEGRATION (retain scheduled cache ID and tx/rx counters)
