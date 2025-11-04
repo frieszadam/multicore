@@ -15,32 +15,33 @@ module cache_tb ();
     
     localparam block_width_lp = 16;
     localparam sets_lp = 16;
-    localparam ways_lp = 2;
+    localparam ways_lp = 4;
     localparam dma_data_width_lp = block_width_lp;
 
     localparam mem_addr_width_lp = 15;
     localparam num_caches_lp = 1;
 
-    localparam core_cache_pkt_width_lp = $bits(core_cache_pkt_t);
+    localparam core_cache_pkt_width_lp = `core_cache_pkt_width;
+    localparam cache_bus_pkt_width_lp  = `cache_bus_pkt_width(dma_data_width_lp);
     logic clk, reset, nreset;
 
     // Core Cache Interface
     logic cc_valid_li, cc_ready_lo;
-    core_cache_pkt_t cc_pkt_li;
+    logic [core_cache_pkt_width_lp-1:0] cc_pkt_li;
 
     logic cc_valid_lo, cc_yumi_li;
     logic [31:0] cc_rdata_lo;
 
     // Cache Bus Interface
     logic cb_valid_lo, cb_yumi_li;
-    cache_bus_pkt_t cb_pkt_lo;
+    logic [cache_bus_pkt_width_lp-1:0] cb_pkt_lo;
 
     logic cb_valid_li;
-    logic [`DMA_DATA_WIDTH] cb_data_li;
+    logic [(dma_data_width_lp*32)-1:0] cb_data_li;
 
     logic mem_done, mem_ready, mem_req, mem_we;
     logic [31:0] mem_addr;
-    logic [`DMA_DATA_WIDTH] mem_rdata, mem_wdata;
+    logic [(dma_data_width_lp*32)-1:0] mem_rdata, mem_wdata;
 
     cache #(
         .block_width_p(block_width_lp),
@@ -139,7 +140,7 @@ module cache_tb ();
     logic [rom_addr_width_lp-1:0] core_trace_rom_addr;
     logic core_done, core_ready_lo;
 
-    assign cc_pkt_li = core_cache_pkt_t'(core_tr_data_lo[core_cache_pkt_width_lp-1:0]);
+    assign cc_pkt_li = core_tr_data_lo[core_cache_pkt_width_lp-1:0];
     assign cc_yumi_li = core_ready_lo & cc_valid_lo;
 
     // REVISIT (cache write completion may require assertion of cc_valid_lo)

@@ -20,7 +20,7 @@ total_address_bits = 32
 # REVISIT link to TB instatiation
 block_size_p = 16
 sets_p = 16
-ways_p = 2
+ways_p = 4
 
 def get_random_address():
     return random.randrange(addr_range_start, addr_range_end) & ~0b11

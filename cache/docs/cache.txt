@@ -1,0 +1,9 @@
+Cache Specification
+
+The cache is write-back and write-allocate, meaning it only writes data back to lower levels
+upon eviction and loads blocks from memory upon write or read misses. A pseudo least-recently
+used replacement policy is implemented and outstanding bus requests are tracked and responses
+given in order.
+
+The cache supports parameterizable block size, burst size, num_sets, and num_ways for reusability
+and design space exploration.

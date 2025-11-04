@@ -1,7 +1,4 @@
-// REVISIT MODEL means consider a more realistic main memory model
-// idea: add delay considering DRAM burst access model
-
-// REVISIT structure as word-addressable memory, not byte addressable!
+// REVISIT (11/2, model DRAM burst access delay)
 
 module main_memory #(
     parameter els_p,

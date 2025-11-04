@@ -1,0 +1,15 @@
+Cache Testbench Specification
+
+Unit level testbench exercising valid cache states through directed stimulus.
+Major testing requirements include:
+- Cache misses
+- Cache evictions
+- Cache read/write sequences
+- Cache snooping leading to invalidation and block state changes
+
+Randomized test traces are generated via a Python framework using BSG trace replay system.
+Test coverage and embedded assertions are included to improve verification certainty.
+
+A software model is constructed of main memory and the cache itself to anticipate expected
+results of memory transactions. Main memory holds what values should be returned from read
+requests and the cache model allows prediction of cache misses and evictions.
