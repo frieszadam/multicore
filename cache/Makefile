@@ -20,7 +20,7 @@ SEED ?= "123"
 
 # make gen_rom SEED=<SEED> DMA_MEM=<DMA_MEM>
 gen_rom:
-	python3 tb/scripts/test_generator.py $(SEED) $(CACHE_DIR)/tb/$(DMA_MEM); \
+	CACHE_DIR=$(CACHE_DIR) python3 tb/scripts/test_generator.py $(SEED) $(CACHE_DIR)/tb/$(DMA_MEM); \
 	python3 $(BASEJUMP_STL_PATH)/bsg_mem/bsg_ascii_to_rom.py $(CORE_TRACE_FILE) $(CORE_TRACE_ROM) \
 	> $(CORE_TRACE_ROM_V);
 

@@ -21,6 +21,9 @@ typedef struct packed {
 `define cache_bus_pkt_width(dma_data_width_p) \
     (33 + 32 * dma_data_width_p)
 
+`define dma_offset_incr(dma_data_size_p) \
+    (1 << (5 + dma_data_size_lp))
+
 typedef enum logic [1:0] {s_invalid, s_exclusive, s_shared, s_modified} block_state_t;
 
 `define declare_cache_bus_pkt_t(dma_data_width_p) \

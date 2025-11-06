@@ -16,7 +16,7 @@ module cache_tb ();
     localparam block_width_lp = 16;
     localparam sets_lp = 16;
     localparam ways_lp = 4;
-    localparam dma_data_width_lp = block_width_lp;
+    localparam dma_data_width_lp = 8;
 
     localparam mem_addr_width_lp = 15;
     localparam num_caches_lp = 1;
@@ -58,7 +58,6 @@ module cache_tb ();
         .cc_pkt_i(cc_pkt_li),
 
         .cc_valid_o(cc_valid_lo),
-        .cc_yumi_i(cc_yumi_li),
         .cc_rdata_o(cc_rdata_lo),
 
         // Cache Bus Interface
@@ -90,6 +89,7 @@ module cache_tb ();
     main_memory #(
         .els_p(2**mem_addr_width_lp),
         .dma_data_width_p(dma_data_width_lp),
+        .block_width_p(block_width_lp),
         .init_file_p()
     ) main_mem (
         .clk_i(clk),
@@ -142,9 +142,6 @@ module cache_tb ();
 
     assign cc_pkt_li = core_tr_data_lo[core_cache_pkt_width_lp-1:0];
     assign cc_yumi_li = core_ready_lo & cc_valid_lo;
-
-    // REVISIT (cache write completion may require assertion of cc_valid_lo)
-    // {cache_data, mem_v, mem_we, mem_addr, mem_data}
 
     logic [ring_width_lp-1:0] trace_replay_data_li;
     assign trace_replay_data_li = {cc_rdata_lo, 66'b0}; // REVISIT consider how to connect memory side signals, FIFO + enqueue on cb_yumi_li & cb_valid_lo
