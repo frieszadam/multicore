@@ -14,13 +14,17 @@ CORE_TRACE_ROM = bsg_core_intf_trace_rom
 CORE_TRACE_ROM_V = tb/bsg_core_intf_trace_rom.v
 
 # default DMA memory
-DMA_MEM ?= ""
+DMA_MEM ?= "dma_init.mem"
 CACHE_DIR = $(abspath .)
 SEED ?= "123"
+VERBOSE ?= "False"
+
+gen_dma_init:
+	CACHE_DIR=$(CACHE_DIR) python3 tb/scripts/gen_dma_init.py $(SEED)
 
 # make gen_rom SEED=<SEED> DMA_MEM=<DMA_MEM>
 gen_rom:
-	CACHE_DIR=$(CACHE_DIR) python3 tb/scripts/test_generator.py $(SEED) $(CACHE_DIR)/tb/$(DMA_MEM); \
+	CACHE_DIR=$(CACHE_DIR) python3 tb/scripts/test_generator.py $(SEED) $(CACHE_DIR)/tb/$(DMA_MEM) $(VERBOSE); \
 	python3 $(BASEJUMP_STL_PATH)/bsg_mem/bsg_ascii_to_rom.py $(CORE_TRACE_FILE) $(CORE_TRACE_ROM) \
 	> $(CORE_TRACE_ROM_V);
 

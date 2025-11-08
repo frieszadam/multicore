@@ -10,16 +10,17 @@ module cache_tb ();
 
     localparam core_clk_freq_p = 125; // MHz
     localparam core_clk_period_p = 1_000_000 / core_clk_freq_p; // ps
-    localparam ring_width_lp = 98;
+    localparam ring_width_lp = 69;
     localparam rom_addr_width_lp = 15;
     
     localparam block_width_lp = 16;
     localparam sets_lp = 16;
-    localparam ways_lp = 4;
-    localparam dma_data_width_lp = 8;
+    localparam ways_lp = 8;
+    localparam dma_data_width_lp = 2;
 
-    localparam mem_addr_width_lp = 15;
+    localparam mem_addr_width_lp = 11;
     localparam num_caches_lp = 1;
+    localparam init_file_lp  = "../../tb/dma_init.mem";
 
     localparam core_cache_pkt_width_lp = `core_cache_pkt_width;
     localparam cache_bus_pkt_width_lp  = `cache_bus_pkt_width(dma_data_width_lp);
@@ -90,7 +91,7 @@ module cache_tb ();
         .els_p(2**mem_addr_width_lp),
         .dma_data_width_p(dma_data_width_lp),
         .block_width_p(block_width_lp),
-        .init_file_p()
+        .init_file_p(init_file_lp)
     ) main_mem (
         .clk_i(clk),
         .nreset_i(nreset),
@@ -144,7 +145,7 @@ module cache_tb ();
     assign cc_yumi_li = core_ready_lo & cc_valid_lo;
 
     logic [ring_width_lp-1:0] trace_replay_data_li;
-    assign trace_replay_data_li = {cc_rdata_lo, 66'b0}; // REVISIT consider how to connect memory side signals, FIFO + enqueue on cb_yumi_li & cb_valid_lo
+    assign trace_replay_data_li = {37'b0, cc_rdata_lo};
     bsg_fsb_node_trace_replay #(
         .ring_width_p(ring_width_lp)
         ,.rom_addr_width_p(rom_addr_width_lp)
