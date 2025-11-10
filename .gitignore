@@ -5,4 +5,5 @@
 archive/*
 **/hammer.log
 **.tr
-**/*rom.v
+**/*trace_rom*.v
+**/*_init.mem

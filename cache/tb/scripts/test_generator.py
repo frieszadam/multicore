@@ -14,7 +14,7 @@ sys.path.append('tb/scripts')
 addr_range_start = 0x1000
 addr_range_end = 0x2000
 
-total_address_bits = 32
+total_address_bits = 32 # default
 cache_directory = os.environ.get('CACHE_DIR')
 
 def get_cache_params():
@@ -28,6 +28,7 @@ def get_cache_params():
     found_blocks = False
     found_sets = False
     found_ways = False
+    found_addr_width = False
 
     with open(f"{cache_directory}/tb/cache_tb.sv", 'r') as f:
         for line in f:
@@ -49,13 +50,19 @@ def get_cache_params():
                     ways_p = int(match_ways.group(1)) 
                     found_ways = True
             
+            if not found_addr_width:
+                match_addr_width = re.search(r'localparam mem_addr_width_lp = \s*(\d+)', line)
+                if match_addr_width:
+                    addr_width_p = int(match_addr_width.group(1)) 
+                    found_addr_width = True
+
             # Exit the loop as soon as all three are found
-            if found_blocks and found_sets and found_ways:
+            if found_blocks and found_sets and found_ways and found_addr_width:
                 break
 
-    return (block_width_p, sets_p, ways_p)
+    return (block_width_p, sets_p, ways_p, addr_width_p)
                 
-def get_random_address():
+def get_random_address(addr_range_start, addr_range_end):
     return random.randrange(addr_range_start, addr_range_end) & ~0b11
 
 def get_random_address_set(set_index):
@@ -96,35 +103,48 @@ if __name__ == "__main__":
     random.seed(seed)
 
     dma_mem_file = sys.argv[2]
-    verbosity_on = sys.argv[3]
+    num_caches_p  = int(sys.argv[3])
+    verbosity_on = sys.argv[4]
 
-    block_width_p, sets_p, ways_p = get_cache_params()
+    block_width_p, sets_p, ways_p, addr_width_p = get_cache_params()
     block_size_bytes = block_width_p * 4
     cache_size_bytes = block_size_bytes * ways_p * sets_p
+
+    total_address_bits = addr_width_p + 2
+    addr_range_incr = int((2**total_address_bits) / num_caches_p)
 
     if os.path.isfile(dma_mem_file):
         mem_model = MemoryModel.from_file(dma_mem_file)
     else:
         mem_model = MemoryModel()
-    hardware_interface = HardwareInterface("core_intf", verbose=verbosity_on)
-
-    send_command(hardware_interface, mem_model, 0, 0, 0b1111, 0)
-
-    wr_addr_list = []    
-    # Simple write and read written value test
-    for i in range(5000):
-        addr = get_random_address()
-        if (random.random() < 0.7):
-            send_command(hardware_interface, mem_model, 0, addr, 0b1111, 0)
-        else:
-            wdata = get_random_wdata()
-            be = get_random_be()
-            send_command(hardware_interface, mem_model, 1, addr, be, wdata)
-            wr_addr_list.append(addr)
     
-    for addr in wr_addr_list:
-        send_command(hardware_interface, mem_model, 0, addr, 0b1111, 0)
-            
-    #### DONE ####
-    hardware_interface.wait(10)
-    hardware_interface.done()
+    hardware_interface_list = []
+    for c in range(num_caches_p):
+        intf_name = "core_intf" + str(c)
+        hardware_interface_list.append(HardwareInterface(intf_name, verbose=verbosity_on))
+
+    for c in range(num_caches_p):
+        wr_addr_list = []
+
+        # Ensure that accesses do not overlap for now
+        addr_range_start = c * addr_range_incr
+        addr_range_end   = (c + 1) * addr_range_incr
+
+        # Simple write and read written value test
+        for i in range(5000):
+            addr = get_random_address(addr_range_start, addr_range_end)
+
+            if (random.random() < 0.7):
+                send_command(hardware_interface_list[c], mem_model, 0, addr, 0b1111, 0)
+            else:
+                wdata = get_random_wdata()
+                be = get_random_be()
+                send_command(hardware_interface_list[c], mem_model, 1, addr, be, wdata)
+                wr_addr_list.append(addr)
+        
+        for addr in wr_addr_list:
+            send_command(hardware_interface_list[c], mem_model, 0, addr, 0b1111, 0)
+      
+        #### DONE ####
+        hardware_interface_list[c].wait(10)
+        hardware_interface_list[c].done()

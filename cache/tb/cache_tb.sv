@@ -15,64 +15,145 @@ module cache_tb ();
     
     localparam block_width_lp = 16;
     localparam sets_lp = 16;
-    localparam ways_lp = 8;
+    localparam ways_lp = 4;
     localparam dma_data_width_lp = 2;
+    localparam num_caches_lp = 4;
 
     localparam mem_addr_width_lp = 11;
-    localparam num_caches_lp = 1;
     localparam init_file_lp  = "../../tb/dma_init.mem";
 
     localparam core_cache_pkt_width_lp = `core_cache_pkt_width;
     localparam cache_bus_pkt_width_lp  = `cache_bus_pkt_width(dma_data_width_lp);
+
     logic clk, reset, nreset;
+    assign nreset = ~reset;
 
     // Core Cache Interface
-    logic cc_valid_li, cc_ready_lo;
-    logic [core_cache_pkt_width_lp-1:0] cc_pkt_li;
+    logic [num_caches_lp-1:0] cc_valid_li, cc_ready_lo;
+    logic [num_caches_lp-1:0] [core_cache_pkt_width_lp-1:0] cc_pkt_li;
 
-    logic cc_valid_lo, cc_yumi_li;
-    logic [31:0] cc_rdata_lo;
+    logic [num_caches_lp-1:0] cc_valid_lo, cc_yumi_li;
+    logic [num_caches_lp-1:0] [31:0] cc_rdata_lo;
 
     // Cache Bus Interface
-    logic cb_valid_lo, cb_yumi_li;
-    logic [cache_bus_pkt_width_lp-1:0] cb_pkt_lo;
+    logic [num_caches_lp-1:0] cb_valid_lo, cb_yumi_li;
+    logic [num_caches_lp-1:0] [cache_bus_pkt_width_lp-1:0] cb_pkt_lo;
 
-    logic cb_valid_li;
+    logic [num_caches_lp-1:0] cb_valid_li;
     logic [(dma_data_width_lp*32)-1:0] cb_data_li;
 
     logic mem_done, mem_ready, mem_req, mem_we;
     logic [31:0] mem_addr;
     logic [(dma_data_width_lp*32)-1:0] mem_rdata, mem_wdata;
 
-    cache #(
-        .block_width_p(block_width_lp),
-        .sets_p(sets_lp),
-        .ways_p(ways_lp),
-        .dma_data_width_p(dma_data_width_lp)
-    ) dut (
-        .clk_i(clk),
-        .nreset_i(nreset),
+    logic [num_caches_lp-1:0] [ring_width_lp+4-1:0] core_trace_rom_data;
+    logic [num_caches_lp-1:0] [ring_width_lp-1:0] core_tr_data_lo;
+    logic [num_caches_lp-1:0] [rom_addr_width_lp-1:0] core_trace_rom_addr;
+    logic [num_caches_lp-1:0] core_done, core_ready_lo, trace_replay_yumi_li;
+    logic [num_caches_lp-1:0] [ring_width_lp-1:0] trace_replay_data_li;
 
-        // Core Cache Interface
-        .cc_valid_i(cc_valid_li),
-        .cc_ready_o(cc_ready_lo),
-        .cc_pkt_i(cc_pkt_li),
+    generate
+        genvar c;
+        for (c = 0; c < num_caches_lp; c++) begin : gen_cache_core
+            assign cc_pkt_li[c] = core_tr_data_lo[c][core_cache_pkt_width_lp-1:0];
+            assign cc_yumi_li[c] = core_ready_lo[c] & cc_valid_lo[c];
 
-        .cc_valid_o(cc_valid_lo),
-        .cc_rdata_o(cc_rdata_lo),
+            assign trace_replay_data_li[c] = {37'b0, cc_rdata_lo[c]};
+            assign trace_replay_yumi_li[c] = cc_ready_lo[c] & cc_valid_li[c];
+            bsg_fsb_node_trace_replay #(
+                .ring_width_p(ring_width_lp)
+                ,.rom_addr_width_p(rom_addr_width_lp)
+            ) u_core_intf_trace_replay (
+                .clk_i(clk)
+                ,.reset_i(reset)
+                ,.en_i(1'b1)
 
-        // Cache Bus Interface
-        .cb_valid_o(cb_valid_lo),
-        .cb_yumi_i(cb_yumi_li),
-        .cb_pkt_o(cb_pkt_lo),
+                ,.v_i(cc_valid_lo[c])
+                ,.data_i(trace_replay_data_li[c])
+                ,.ready_o(core_ready_lo[c])
 
-        .cb_valid_i(cb_valid_li),
-        .cb_data_i(cb_data_li)
-    );
+                ,.v_o(cc_valid_li[c])
+                ,.data_o(core_tr_data_lo[c])
+                ,.yumi_i(trace_replay_yumi_li[c])
+
+                ,.rom_addr_o(core_trace_rom_addr[c])
+                ,.rom_data_i(core_trace_rom_data[c])
+
+                ,.done_o(core_done[c])
+                ,.error_o()
+            ); 
+
+            case(c)
+                0: begin : gen_rom0
+                    bsg_core_intf_trace_rom0 #(
+                        .width_p(ring_width_lp+4)
+                        ,.addr_width_p(rom_addr_width_lp)
+                    ) u_core_intf_trace_rom (
+                        .addr_i(core_trace_rom_addr[c])
+                        ,.data_o(core_trace_rom_data[c])
+                    );
+                end
+                1: begin : gen_rom1
+                    bsg_core_intf_trace_rom1 #(
+                        .width_p(ring_width_lp+4)
+                        ,.addr_width_p(rom_addr_width_lp)
+                    ) u_core_intf_trace_rom (
+                        .addr_i(core_trace_rom_addr[c])
+                        ,.data_o(core_trace_rom_data[c])
+                    );
+                end
+                2: begin : gen_rom2
+                    bsg_core_intf_trace_rom2 #(
+                        .width_p(ring_width_lp+4)
+                        ,.addr_width_p(rom_addr_width_lp)
+                    ) u_core_intf_trace_rom (
+                        .addr_i(core_trace_rom_addr[c])
+                        ,.data_o(core_trace_rom_data[c])
+                    );
+                end
+                3: begin : gen_rom3
+                    bsg_core_intf_trace_rom3 #(
+                        .width_p(ring_width_lp+4)
+                        ,.addr_width_p(rom_addr_width_lp)
+                    ) u_core_intf_trace_rom (
+                        .addr_i(core_trace_rom_addr[c])
+                        ,.data_o(core_trace_rom_data[c])
+                    );
+                end
+                default: ;
+            endcase
+
+            cache #(
+                .block_width_p(block_width_lp),
+                .sets_p(sets_lp),
+                .ways_p(ways_lp),
+                .dma_data_width_p(dma_data_width_lp)
+            ) u_dut (
+                .clk_i(clk),
+                .nreset_i(nreset),
+
+                // Core Cache Interface
+                .cc_valid_i(cc_valid_li[c]),
+                .cc_ready_o(cc_ready_lo[c]),
+                .cc_pkt_i(cc_pkt_li[c]),
+
+                .cc_valid_o(cc_valid_lo[c]),
+                .cc_rdata_o(cc_rdata_lo[c]),
+
+                // Cache Bus Interface
+                .cb_valid_o(cb_valid_lo[c]),
+                .cb_yumi_i(cb_yumi_li[c]),
+                .cb_pkt_o(cb_pkt_lo[c]),
+
+                .cb_valid_i(cb_valid_li[c]),
+                .cb_data_i(cb_data_li)
+            );
+        end
+    endgenerate
 
     bsg_nonsynth_clock_gen #(
         .cycle_time_p(core_clk_period_p)
-    ) clock_gen (
+    ) u_clock_gen (
         .o(clk)
     );
 
@@ -80,38 +161,16 @@ module cache_tb ();
         .num_clocks_p(1)
         ,.reset_cycles_lo_p(0)
         ,.reset_cycles_hi_p(10)
-    ) reset_gen (
+    ) u_reset_gen (
         .clk_i(clk)
         ,.async_reset_o(reset)
-    );
-
-    assign nreset = ~reset;
-
-    main_memory #(
-        .els_p(2**mem_addr_width_lp),
-        .dma_data_width_p(dma_data_width_lp),
-        .block_width_p(block_width_lp),
-        .init_file_p(init_file_lp)
-    ) main_mem (
-        .clk_i(clk),
-        .nreset_i(nreset),
-
-        // Memory to Bus
-        .mem_valid_i(mem_req),
-        .mem_ready_o(mem_ready),
-        .mem_valid_o(mem_done),
-
-        .mem_we_i(mem_we),
-        .mem_addr_i(mem_addr),
-        .mem_wdata_i(mem_wdata),
-        .mem_data_o(mem_rdata)
     );
 
     bus #(
         .num_caches_p(num_caches_lp),
         .block_width_p(block_width_lp),
         .dma_data_width_p(dma_data_width_lp)
-    ) cache_mem_bus (
+    ) u_bus (
         .clk_i(clk),
         .nreset_i(nreset),
 
@@ -136,45 +195,24 @@ module cache_tb ();
         .cb_data_o(cb_data_li)
     );
 
-    logic [ring_width_lp+4-1:0] core_trace_rom_data;
-    logic [ring_width_lp-1:0] core_tr_data_lo;
-    logic [rom_addr_width_lp-1:0] core_trace_rom_addr;
-    logic core_done, core_ready_lo;
+    main_memory #(
+        .els_p(2**mem_addr_width_lp),
+        .dma_data_width_p(dma_data_width_lp),
+        .block_width_p(block_width_lp),
+        .init_file_p(init_file_lp)
+    ) u_main_mem (
+        .clk_i(clk),
+        .nreset_i(nreset),
 
-    assign cc_pkt_li = core_tr_data_lo[core_cache_pkt_width_lp-1:0];
-    assign cc_yumi_li = core_ready_lo & cc_valid_lo;
+        // Memory to Bus
+        .mem_valid_i(mem_req),
+        .mem_ready_o(mem_ready),
+        .mem_valid_o(mem_done),
 
-    logic [ring_width_lp-1:0] trace_replay_data_li;
-    assign trace_replay_data_li = {37'b0, cc_rdata_lo};
-    bsg_fsb_node_trace_replay #(
-        .ring_width_p(ring_width_lp)
-        ,.rom_addr_width_p(rom_addr_width_lp)
-    ) core_intf_trace_replay (
-        .clk_i(clk)
-        ,.reset_i(reset)
-        ,.en_i(1'b1)
-
-        ,.v_i(cc_valid_lo)
-        ,.data_i(trace_replay_data_li)
-        ,.ready_o(core_ready_lo)
-
-        ,.v_o(cc_valid_li)
-        ,.data_o(core_tr_data_lo)
-        ,.yumi_i(cc_ready_lo & cc_valid_li)
-
-        ,.rom_addr_o(core_trace_rom_addr)
-        ,.rom_data_i(core_trace_rom_data)
-
-        ,.done_o(core_done)
-        ,.error_o()
-    ); 
-
-    bsg_core_intf_trace_rom #(
-        .width_p(ring_width_lp+4)
-        ,.addr_width_p(rom_addr_width_lp)
-    ) core_intf_trace_rom (
-        .addr_i(core_trace_rom_addr)
-        ,.data_o(core_trace_rom_data)
+        .mem_we_i(mem_we),
+        .mem_addr_i(mem_addr),
+        .mem_wdata_i(mem_wdata),
+        .mem_data_o(mem_rdata)
     );
 
   initial begin
@@ -183,7 +221,7 @@ module cache_tb ();
       @(posedge clk);
     end
 
-    wait(core_done);
+    wait(&core_done);
     $display("[FINISH] Test Successful.");
     $finish;
   end

@@ -16,3 +16,7 @@ vlsi.inputs.placement_constraints:
     y: 0
     margins: {left: 0, right: 0, top: 0, bottom: 0}
 
+# vlsi.inputs.sram_parameters: [
+#   {name: "fakeram_d128_w32", family: "1rw", depth: 128, width: 32, mask: True,
+#    mux: 1, vt: ""},
+# ]

@@ -7,3 +7,7 @@ given in order.
 
 The cache supports parameterizable block size, burst size, num_sets, and num_ways for reusability
 and design space exploration.
+
+During a write-allocate, the written block is detected and written in same process as storing the
+loaded data to minimize latency. Similarily we store and directly forward read data following main
+memory load. 

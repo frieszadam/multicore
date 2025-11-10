@@ -14,9 +14,14 @@ sim.inputs.tb_input_files: [
   "${bsg_root}/bsg_legacy/bsg_fsb/bsg_fsb_node_trace_replay.v",
 
   "v/bus.sv",
+  "v/priority_lru.sv",
   "v/main_memory.sv",
 
-  "tb/bsg_core_intf_trace_rom.v",
+  # REVISIT (11/10, autoinclude rom up to num_cache-1)
+  "tb/bsg_core_intf_trace_rom0.v",
+  "tb/bsg_core_intf_trace_rom1.v",
+  "tb/bsg_core_intf_trace_rom2.v",
+  "tb/bsg_core_intf_trace_rom3.v",
   "tb/cache_tb.sv"
 ]
 sim.inputs.tb_input_files_meta: [subst]

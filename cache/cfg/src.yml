@@ -3,6 +3,7 @@
 # List of all Verilog source files to include in this build.
 synthesis.inputs.input_files: [
   "v/cache.svh",
+  "v/index_lru.sv",
   "v/cache.sv"
 ]
 synthesis.inputs.input_files_meta: [append, subst]

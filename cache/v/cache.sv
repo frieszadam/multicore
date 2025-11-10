@@ -126,6 +126,7 @@ module cache #(
 
     // pseudo LRU tree
     logic [ways_size_lp-1:0] lru_way_index, open_way_index;
+    genvar s;
 
     generate
         if (ways_p == 1) begin : gen_direct_mapped
@@ -151,65 +152,18 @@ module cache #(
                 
                 lru_way_index = lru_set_way_index[set_index]; 
             end
-            // REVISIT (11/3, parameterize LRU for all valid ways_p)
-            if (ways_p == 2) begin                
-                always_comb begin
-                    for (int s = 0; s < sets_p; s++) begin
-                        lru_set_way_index[s] = lru_flag_r[s];
-                        lru_flag_n[s] = set_access[s]? ~way_index: lru_flag_r[s];
-                    end
-                end
-            end
 
-            else if (ways_p == 4) begin
-                always_comb begin
-                    for (int s = 0; s < sets_p; s++) begin
-                        lru_set_way_index[s] = (lru_flag_r[s][0] << 1) | (lru_flag_r[s][0]? lru_flag_r[s][2]: lru_flag_r[s][1]);
-                        
-                        lru_flag_n[s][0] =  (set_access[s])?                     ~way_index[1]: lru_flag_r[s][0];
-                        lru_flag_n[s][1] =  (set_access[s] & ~way_index[1])? ~way_index[0]: lru_flag_r[s][1];
-                        lru_flag_n[s][2] =  (set_access[s] &  way_index[1])? ~way_index[0]: lru_flag_r[s][2];
-                    end
-                end
-            end
-
-            else if (ways_p == 8) begin
-                always_comb begin
-                    for (int s = 0; s < sets_p; s++) begin
-                        // lru_set_way_index[s] = lru_flag_r[s][0] << (ways_size_lp-1);
-                        // for (int l = 0; ; < ways_size_lp; l++) begin
-                        //     layer_index[s][l] = {'0, lru_set_way_index[s][ways_size_lp-1 -: l] << l};
-                        //     lru_set_way_index[s] = lru_set_way_index[s] | (lru_flag_r[s][lru_set_way_index[ways_size_lp-1]] << (ways_size_lp-2))
-                        // end
-                        
-                        // Decoding of lru flags into index of LRU way in each set
-                        lru_set_way_index[s] = ways_size_lp'(lru_flag_r[s][0] << (ways_size_lp-1));
-                        if (lru_flag_r[s][0]) begin
-                            lru_set_way_index[s] = lru_set_way_index[s] | (lru_flag_r[s][2] << (ways_size_lp-2));
-                            if (lru_flag_r[s][2])
-                                lru_set_way_index[s] = lru_set_way_index[s] | (lru_flag_r[s][6] << (ways_size_lp-3));
-                            else
-                                lru_set_way_index[s] = lru_set_way_index[s] | (lru_flag_r[s][5] << (ways_size_lp-3));
-                        end else begin
-                            lru_set_way_index[s] = lru_set_way_index[s] | (lru_flag_r[s][1] << (ways_size_lp-2));
-                            if (lru_flag_r[s][1])
-                                lru_set_way_index[s] = lru_set_way_index[s] | (lru_flag_r[s][4] << (ways_size_lp-3));
-                            else
-                                lru_set_way_index[s] = lru_set_way_index[s] | (lru_flag_r[s][3] << (ways_size_lp-3));
-                        end
-
-                        // Update of each lru flag bit in the accessed set
-                        lru_flag_n[s][0] =  (set_access[s])? ~way_index[ways_size_lp-1]: lru_flag_r[s][0];
-
-                        lru_flag_n[s][1] =  (set_access[s] & ~way_index[ways_size_lp-1])? ~way_index[ways_size_lp-2]: lru_flag_r[s][1];
-                        lru_flag_n[s][2] =  (set_access[s] &  way_index[ways_size_lp-1])? ~way_index[ways_size_lp-2]: lru_flag_r[s][2];
-
-                        lru_flag_n[s][3] =  (set_access[s] & ~way_index[ways_size_lp-1] & ~way_index[ways_size_lp-2])? ~way_index[ways_size_lp-3]: lru_flag_r[s][3];
-                        lru_flag_n[s][4] =  (set_access[s] & ~way_index[ways_size_lp-1] &  way_index[ways_size_lp-2])? ~way_index[ways_size_lp-3]: lru_flag_r[s][4];
-                        lru_flag_n[s][5] =  (set_access[s] &  way_index[ways_size_lp-1] & ~way_index[ways_size_lp-2])? ~way_index[ways_size_lp-3]: lru_flag_r[s][5];
-                        lru_flag_n[s][6] =  (set_access[s] &  way_index[ways_size_lp-1] &  way_index[ways_size_lp-2])? ~way_index[ways_size_lp-3]: lru_flag_r[s][6];
-                    end
-                end
+            // Generate an LRU block for each set
+            for (s = 0; s < sets_p; s++) begin : gen_lru
+                index_lru #(
+                    .size_p(ways_size_lp)
+                ) u_index_lru (
+                    .clk_i, 
+                    .nreset_i,
+                    .valid_i(set_access[s]),
+                    .index_i(way_index),
+                    .index_o(lru_set_way_index[s])
+                );
             end
 
             // 2-way pLRU guaruntees block will not be evicted unless set is full
@@ -218,7 +172,7 @@ module cache #(
             end else begin
                 always_comb begin // priority encoder
                     for (int w = 0; w < ways_p; w++) begin
-                        open_way_index = ~block_hit[w]? ways_size_lp'(w): open_way_index;
+                        open_way_index = block_state_invalid[w]? ways_size_lp'(w): open_way_index;
                     end
                 end
             end
@@ -265,9 +219,10 @@ module cache #(
                     cache_state_n = s_idle;
                 end
             end
-            s_alloc_tx: cache_state_n = tx_done? s_alloc_req: s_alloc_tx;
+            s_alloc_tx:  cache_state_n = tx_done? s_alloc_req: s_alloc_tx;
             s_alloc_req: cache_state_n = cb_yumi_i? s_alloc_rx: s_alloc_req;
-            s_alloc_rx:  cache_state_n = rx_done? s_idle: s_alloc_rx; // in case of mm load then write, we do 1 write of combined value and we directly forward read data to output and assert valid
+            s_alloc_rx:  cache_state_n = rx_done? s_idle: s_alloc_rx;
+            default:     cache_state_n = s_idle;
         endcase
     end
 
@@ -585,6 +540,11 @@ module cache #(
             @(posedge clk_i) p_match_dma_block_at_most_once and p_match_dma_block_force_stay;
         endproperty
 
+        // No eviction should be sent when the set is not full
+        property p_no_eviction_when_set_not_full;
+            @(posedge clk_i) if (nreset_i) send_eviction |-> set_full;
+        endproperty
+
         property p_parameters_pow2;
             @(posedge clk_i) $onehot(dma_data_width_p) and $onehot(block_width_p) and $onehot(ways_p) and $onehot(sets_p);
         endproperty
@@ -647,6 +607,9 @@ module cache #(
 
         a_match_dma_block_once: assert property (p_match_dma_block_once)
             else $error("Assertion failure: Must match_dma_block exactly once per s_alloc_rx loop.");
+
+        a_no_eviction_when_set_not_full: assert property (p_no_eviction_when_set_not_full)
+            else $error("Assertion failure: No eviction should be sent when the set isn't full.");
 
         a_parameters_pow2: assert property (p_parameters_pow2)
             else $error("Assertion failure: Given parameters must be a power of 2.");
