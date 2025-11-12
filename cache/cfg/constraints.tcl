@@ -6,15 +6,15 @@
 #
 
 set clk_period 5.0
+set half_period [expr {$clk_period / 2}]
 
 create_clock -name clk -period $clk_period [get_ports clk_i]
 set_clock_uncertainty 0.100 [get_clocks clk]
 
 # Always set the input/output delay as half periods for clock setup checks
-set_input_delay  2.125 -max -clock [get_clocks clk] [all_inputs]
-set_output_delay 2.125 -max -clock [get_clocks clk] [all_outputs]
+set_input_delay  $half_period -max -clock [get_clocks clk] [all_inputs]
+set_output_delay $half_period -max -clock [get_clocks clk] [all_outputs]
 
 # Always set the input/output delay as 0 for clock hold checks
 set_input_delay  0.0 -min -clock [get_clocks clk] [all_inputs]
 set_output_delay 0.0 -min -clock [get_clocks clk] [all_outputs]
-

@@ -1,4 +1,4 @@
-`include "v/cache.svh"
+`include "v/cache.vh"
 
 module cache_tb ();
 
@@ -14,10 +14,10 @@ module cache_tb ();
     localparam rom_addr_width_lp = 15;
     
     localparam block_width_lp = 16;
-    localparam sets_lp = 16;
+    localparam sets_lp = 64;
     localparam ways_lp = 4;
     localparam dma_data_width_lp = 2;
-    localparam num_caches_lp = 4;
+    localparam num_caches_lp = 1;
 
     localparam mem_addr_width_lp = 11;
     localparam init_file_lp  = "../../tb/dma_init.mem";

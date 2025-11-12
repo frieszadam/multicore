@@ -1,4 +1,4 @@
-`include "v/cache.svh"
+`include "v/cache.vh"
 
 module bus #(
     parameter num_caches_p,       // number of caches in system
@@ -33,7 +33,7 @@ module bus #(
     localparam dma_data_size_lp = $clog2(dma_data_width_p);
     localparam num_cache_size_lp = $clog2(num_caches_p);
     
-    `declare_cache_bus_pkt_t(dma_data_width_p)
+    `declare_cache_bus_pkt_t(dma_data_width_p);
     cache_bus_pkt_t [num_caches_p-1:0] cb_pkt;
     assign cb_pkt = cb_pkt_i;
 
@@ -41,7 +41,7 @@ module bus #(
     logic [num_caches_p-1:0] [(dma_data_width_p*32)-1:0] pkt_wdata;
     logic [num_caches_p-1:0] pkt_we;
     
-    logic tx_inactive, tx_begin; // bus is ready to facilitate a new transaction
+    logic tx_inactive, tx_begin, cb_valid_eq_cache_id; // bus is ready to facilitate a new transaction
     logic mem_ld_r, mem_ld_n, mem_ld_set, mem_ld_clr;    // bus is waiting for the response of a load, serializes accesses
     logic [num_cache_size_lp-1:0] cache_id;
 
@@ -100,7 +100,7 @@ module bus #(
     end
 
     assign cb_data_o   = mem_data_i;
-    assign mem_valid_o = |cb_valid_i & mem_ready_i;
+    assign mem_valid_o = mem_ready_i & (cb_valid_eq_cache_id | (tx_inactive & |cb_valid_i));
     assign mem_we_o    = pkt_we[cache_id];
     assign mem_wdata_o = pkt_wdata[cache_id];
 
@@ -108,9 +108,9 @@ module bus #(
     generate
         if (num_caches_p == 1) begin : gen_one_cache
             assign cb_valid_o = mem_valid_i;
-            assign cb_yumi_o   = mem_ready_i & cb_valid_i;
-            assign cache_id     = '0;
-
+            assign cb_yumi_o  = mem_ready_i & cb_valid_i;
+            assign cache_id   = '0;
+            assign cb_valid_eq_cache_id = cb_valid_i;
         end else begin : gen_multi_cache
             // REVISIT MULTICORE INTEGRATION
             logic [num_cache_size_lp-1:0] new_cache_id, cache_id_r, cache_id_n;
@@ -173,6 +173,7 @@ module bus #(
                     cb_yumi_o[c]  = mem_ready_i & (tx_inactive? yumi_inactive[c]: yumi_active[c]);
                     cb_valid_o[c] = eq_cache_id_r[c] & mem_valid_i;
                 end
+                cb_valid_eq_cache_id = |(eq_cache_id_r & cb_valid_i);
             end
 
             assign cache_id_n = tx_begin? new_cache_id: cache_id_r;

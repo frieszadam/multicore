@@ -1,4 +1,5 @@
-`include "v/cache.svh"
+`include "v/cache.vh"
+import cache_pkg::*;
 
 // REVISIT (11/2, verify expectation of word aligned accesses)
 module cache #(
@@ -38,19 +39,25 @@ module cache #(
     // For counting
     localparam num_blocks_lp    = sets_p * ways_p;
     localparam ways_size_lp     = $clog2(ways_p);
+    localparam wr_mask_width_lp = dma_data_width_p << 2;
 
     // For indexing
-    localparam offset_width_lp   = $clog2(block_width_p) + 2; // offset within block, add 2 because block size in words
-    localparam index_width_lp    = $clog2(sets_p);
-    localparam tag_width_lp      = 32 - offset_width_lp - index_width_lp;
+    localparam offset_width_lp    = $clog2(block_width_p) + 2; // offset within block, add 2 because block size in words
+    localparam index_width_lp     = $clog2(sets_p);
+    localparam tag_width_lp       = 32 - offset_width_lp - index_width_lp;
+    localparam state_width_lp     = $bits(block_state_t);
+    localparam tag_state_width_lp = (ways_p * state_width_lp) + tag_width_lp;
 
     // Data transfer ratio
-    localparam dma_blk_ratio_lp   = $clog2(block_width_p/dma_data_width_p);
-    localparam dma_data_size_lp   = $clog2(dma_data_width_p);
-    localparam dma_offset_incr_lp = dma_data_size_lp + 5;
+    localparam dma_blk_ratio_lp      = block_width_p / dma_data_width_p;
+    localparam dma_blk_size_ratio_lp = $clog2(dma_blk_ratio_lp);
+    localparam dma_data_size_lp      = $clog2(dma_data_width_p);
+    localparam dma_byte_width_lp     = dma_data_width_p << 2;
+    localparam dma_byte_size_lp      = $clog2(dma_byte_width_lp);
+    localparam dma_bit_size_lp       = dma_data_size_lp + 5;
 
-    `declare_cache_bus_pkt_t(dma_data_width_p)
-    `declare_cache_block_t(tag_width_lp, block_width_p)
+    `declare_cache_bus_pkt_t(dma_data_width_p);
+    `declare_cache_block_t(tag_width_lp, block_width_p);
 
     core_cache_pkt_t cc_pkt, cc_pkt_r;
     assign cc_pkt = cc_pkt_i;
@@ -58,16 +65,31 @@ module cache #(
     cache_bus_pkt_t cb_pkt;
     assign cb_pkt_o = cb_pkt;
 
-    // lru, block_state, tag, data 
-    cache_block_t [sets_p-1:0] [ways_p-1:0] cache_mem_r, cache_mem_n;
-    logic [ways_p-1:0] [tag_width_lp-1:0] block_tag_r, block_tag_n;
-    block_state_t [ways_p-1:0] block_state_r, block_state_n;
-    // REVISIT (11/4, we load entire block as we may read or evict and these could be from different addresses) 
-    logic [ways_p-1:0] [(block_width_p*32)-1:0] block_data_r, block_data_n;
+    logic [ways_p-1:0] [tag_width_lp-1:0]       mem_tag_rdata;
+    logic [ways_p-1:0] [state_width_lp-1:0]     mem_state_rdata;
+    logic [ways_p-1:0] [(dma_data_width_p*32)-1:0] mem_data_rdata;
 
-    logic [tag_width_lp-1:0] cc_pkt_addr_dly1;
-    logic [index_width_lp-1:0] set_index;
-    logic write_complete, read_complete, cc_valid_ready, cc_valid_ready_r;
+    logic rst_seq_done;
+    logic [index_width_lp:0] rst_count_r, rst_count_n;
+    
+    assign rst_seq_done = rst_count_r == sets_p;
+    assign rst_count_n  = rst_count_r + {'0, ~rst_seq_done};
+
+    always_ff @(posedge clk_i) begin
+        if (~nreset_i) begin
+            rst_count_r <= '0;
+        end else begin
+            rst_count_r <= rst_count_n;
+        end
+    end
+
+    // Data loaded from cache on transition to s_lookup
+    logic [ways_p-1:0] [tag_width_lp-1:0] set_tag_r, set_tag;
+    block_state_t [ways_p-1:0] set_state_r, set_state;
+    logic [ways_p-1:0] [(dma_data_width_p*32)-1:0] set_data_r, set_data;
+
+    logic [index_width_lp-1:0] set_index, set_index_r;
+    logic write_complete, cc_valid_ready, cc_valid_ready_r;
 
     logic [31:0] cc_rdata_src;
     logic [31:0] main_mem_rdata;
@@ -76,14 +98,15 @@ module cache #(
     cache_control_t cache_state_r, cache_state_n;
 
     assign cc_valid_ready = cc_valid_i & cc_ready_o;
-    assign set_index = cc_valid_ready? cc_pkt.addr[offset_width_lp+:index_width_lp]: cc_pkt_r.addr[offset_width_lp+:index_width_lp];
+    assign set_index = cc_valid_ready? cc_pkt.addr[offset_width_lp+:index_width_lp]: set_index_r;
+    assign set_index_r = cc_pkt_r.addr[offset_width_lp+:index_width_lp];
 
     // Load block tag, state, data, and lru for all blocks in set upon receiving request
     always_comb begin
-        for (int i = 0; i < ways_p; i++) begin
-            block_tag_n[i] = cc_valid_ready? cache_mem_r[set_index][i].tag: block_tag_r[i];
-            block_state_n[i] = cc_valid_ready? cache_mem_r[set_index][i].block_state: block_state_r[i];
-            block_data_n[i] = cc_valid_ready? cache_mem_r[set_index][i].data: block_data_r[i];
+        for (int w = 0; w < ways_p; w++) begin
+            set_tag[w]   = cc_valid_ready_r? mem_tag_rdata[w]: set_tag_r[w];
+            set_state[w] = cc_valid_ready_r? block_state_t'(mem_state_rdata[w]): set_state_r[w];
+            set_data[w]  = cc_valid_ready_r? mem_data_rdata[w]: set_data_r[w];
         end
     end
 
@@ -94,39 +117,35 @@ module cache #(
         else 
             cc_valid_ready_r <= cc_valid_ready;
 
-        cc_pkt_r      <= cc_valid_ready? cc_pkt: cc_pkt_r;
-        block_tag_r   <= block_tag_n;
-        block_state_r <= block_state_n;
-        block_data_r  <= block_data_n;
+        cc_pkt_r    <= cc_valid_ready? cc_pkt: cc_pkt_r;
+        set_tag_r   <= set_tag;
+        set_state_r <= set_state;
+        set_data_r  <= set_data;
     end
 
     logic tx_done, rx_done, rx_start;
     logic read_write_miss, set_full, send_eviction;
-    logic [offset_width_lp+2:0] cc_pkt_r_offset; // because we left shift by three to convert byte to bit 
     logic [ways_size_lp-1:0] way_index, way_index_n, way_index_r, block_hit_index;
     logic [ways_p-1:0] block_state_invalid, block_hit;
     logic [31:0] evict_block_address;
-
-    assign cc_pkt_r_offset = cc_pkt_r.addr[offset_width_lp-1:0] <<< 3;
 
     always_comb begin
         read_write_miss = cc_valid_ready_r;
         set_full = 1'b1;
 
         for (int w = 0; w < ways_p; w++) begin
-            block_state_invalid[w] = block_state_r[w] == s_invalid;
-            block_hit[w] = ~block_state_invalid[w] & block_tag_r[w] == cc_pkt_r.addr[31-:tag_width_lp];
+            block_state_invalid[w] = set_state[w] == s_invalid;
+            block_hit[w] = ~block_state_invalid[w] & set_tag[w] == cc_pkt_r.addr[31-:tag_width_lp];
 
             // not a miss if any valid way holds a matching tag
             read_write_miss = read_write_miss & ~block_hit[w];
             set_full = set_full & ~block_state_invalid[w];
         end
     end
-    
 
     // pseudo LRU tree
     logic [ways_size_lp-1:0] lru_way_index, open_way_index;
-    genvar s;
+    genvar s, w;
 
     generate
         if (ways_p == 1) begin : gen_direct_mapped
@@ -135,22 +154,16 @@ module cache #(
         end else begin : gen_associative
             logic cache_access;
             logic [sets_p-1:0] set_access;
-            logic [ways_p-1:0] way_access;
+            logic [sets_p-1:0] [ways_size_lp-1:0] lru_set_way_index;
 
             assign cache_access = rx_start | (cache_state_r == s_lookup & ~read_write_miss);
-            
-            logic [sets_p-1:0] [ways_p-2:0] lru_flag_r, lru_flag_n;
-            logic [sets_p-1:0] [ways_size_lp-1:0] lru_set_way_index;
 
             always_comb begin                
                 for (int s = 0; s < sets_p; s++) begin
-                    set_access[s] = cache_access & set_index == index_width_lp'(s);
-                end
-                for (int w = 0; w < ways_p; w++) begin
-                    way_access[w] = way_index == ways_size_lp'(w);
+                    set_access[s] = cache_access & set_index_r == index_width_lp'(s);
                 end
                 
-                lru_way_index = lru_set_way_index[set_index]; 
+                lru_way_index = lru_set_way_index[set_index_r]; 
             end
 
             // Generate an LRU block for each set
@@ -171,25 +184,28 @@ module cache #(
                 assign open_way_index = lru_way_index;
             end else begin
                 always_comb begin // priority encoder
+                    open_way_index = '0;
                     for (int w = 0; w < ways_p; w++) begin
                         open_way_index = block_state_invalid[w]? ways_size_lp'(w): open_way_index;
                     end
                 end
             end
-
-            always_ff @(posedge clk_i) begin
-                if (~nreset_i) begin
-                    for (int s = 0; s < sets_p; s++) begin
-                        lru_flag_r[s] <= '0;
-                    end
-                end else
-                    lru_flag_r <= lru_flag_n;
-            end
         end
     endgenerate
 
+    // Since everything is a power of 2 this is equal to (cc_pkt_r / dma_data_width_p)
+    // ib = intra-block
+    logic [dma_blk_size_ratio_lp-1:0] cc_pkt_rx_addr, cc_pkt_rx_addr_r;
+    logic [dma_data_size_lp+1:0] cc_pkt_ib_byte_offset_r;
+    logic [dma_data_size_lp+4:0] cc_pkt_ib_bit_offset_r; // intra-block offset
+    assign cc_pkt_ib_byte_offset_r = cc_pkt_r.addr[dma_data_size_lp+1:0];
+    assign cc_pkt_ib_bit_offset_r  = cc_pkt_ib_byte_offset_r << 3;
+
     // if an open way exists, it will be at way_index so if way_index is modified then the set is full and we must evict 
-    assign send_eviction = (cache_state_r == s_lookup & read_write_miss & block_state_r[way_index] == s_modified) || (cache_state_r == s_alloc_tx);
+    // check cc_pkt_rx_addr_r since we will only have the rd data ready this cycle if we read it based on the cc_pkt addr
+    // REVISIT (check timing)
+    assign send_eviction = (cache_state_r == s_lookup & read_write_miss & set_state[way_index] == s_modified & cc_pkt_rx_addr == '0) ||
+        (cache_state_r == s_alloc_tx);
 
     // if not miss then matching index, else if miss but not full open index, else eviction index
     always_comb begin
@@ -203,7 +219,6 @@ module cache #(
         end
     end
 
-
     // Cache State Logic
     always_comb begin
         case (cache_state_r)
@@ -211,7 +226,7 @@ module cache #(
 
             s_lookup: begin
                 if (read_write_miss) begin
-                    if (block_state_r[way_index] == s_modified)
+                    if (set_state[way_index] == s_modified)
                         cache_state_n = tx_done? s_alloc_req: s_alloc_tx;
                     else
                         cache_state_n = cb_yumi_i? s_alloc_rx: s_alloc_req;
@@ -234,25 +249,20 @@ module cache #(
     end
 
     logic cache_mem_write, write_dma_block, match_dma_block;
-    logic [offset_width_lp+2:0] rx_offset_r, wdata_offset;
+    logic [dma_blk_size_ratio_lp-1:0] rx_count_r, tx_count_r;
 
     assign cache_mem_write = cache_state_r == s_lookup & ~read_write_miss & cc_pkt_r.we;
-
     assign write_complete = cc_valid_o & cc_pkt_r.we;
-    assign read_complete  = cc_valid_o & ~cc_pkt_r.we;
 
-    assign cc_ready_o = cache_state_r == s_idle;
+    assign cc_ready_o = (cache_state_r == s_idle) & rst_seq_done;
     assign cc_valid_o = cache_state_r != s_idle & cache_state_n == s_idle;
-
 
     generate
         if (block_width_p != dma_data_width_p) begin : block_width_not_dma_data_width
             logic tx_count_incr;
-            logic [dma_blk_ratio_lp-1:0] rx_count_r, rx_count_n, tx_count_r, tx_count_n;
-            logic [offset_width_lp+2:0] tx_offset_r, rx_offset_n;
+            logic [dma_blk_size_ratio_lp-1:0] rx_count_n, tx_count_n;
             logic [offset_width_lp-1:0] tx_addr_offset;
-            logic [31:0] main_mem_rdata_r; // REVISIT (PPA, could condense to 32 bits)
-            logic [offset_width_lp-(dma_data_size_lp+2)-1:0] cc_pkt_rx_addr;
+            logic [31:0] main_mem_rdata_r;
 
             assign rx_done  = rx_count_r == '1 & cb_valid_i;
             assign rx_start = rx_count_r == '0 & cb_valid_i;
@@ -271,22 +281,20 @@ module cache #(
                     tx_count_r <= tx_count_n;
                 end
             end
-            
-            assign rx_offset_r = rx_count_r << dma_offset_incr_lp;
-            assign rx_offset_n = ((rx_count_r + dma_blk_ratio_lp'(1)) << dma_offset_incr_lp) - offset_width_lp+3'(1);
-            assign tx_offset_r = tx_count_r << dma_offset_incr_lp;
+                        
+            assign cc_pkt_rx_addr   = cc_pkt.addr[offset_width_lp-1 -: dma_blk_size_ratio_lp];
+            assign cc_pkt_rx_addr_r = cc_pkt_r.addr[offset_width_lp-1 -: dma_blk_size_ratio_lp];
+
             assign tx_addr_offset = tx_count_r << (dma_data_size_lp + 2);
 
-            // compare upper bits of offset region, valid as dma_data_width_p must be a power of 2
-            assign cc_pkt_rx_addr = cc_pkt_r.addr[offset_width_lp-1:dma_data_size_lp+2];
-            assign match_dma_block = (rx_count_r == cc_pkt_rx_addr) & cb_valid_i;
+            assign match_dma_block = (rx_count_r == cc_pkt_rx_addr_r) & cb_valid_i;
             assign write_dma_block = cc_pkt_r.we & match_dma_block;
             
-            assign cb_pkt.wdata = block_data_r[way_index][tx_offset_r +: (1 << dma_offset_incr_lp)];
-            assign evict_block_address = {block_tag_r[way_index], cc_pkt_r.addr[offset_width_lp+:index_width_lp], tx_addr_offset}; 
+            assign cb_pkt.wdata = set_data[way_index];
+            assign evict_block_address = {set_tag[way_index], cc_pkt_r.addr[offset_width_lp+:index_width_lp], tx_addr_offset}; 
             
             // rdata is the loaded block that matches, either from this cycle or previously
-            assign main_mem_rdata = match_dma_block? cb_data_i[wdata_offset +: 32]: main_mem_rdata_r;
+            assign main_mem_rdata = match_dma_block? cb_data_i[cc_pkt_ib_bit_offset_r +: 32]: main_mem_rdata_r;
             always_ff @(posedge clk_i) begin
                 main_mem_rdata_r <= main_mem_rdata;
             end
@@ -295,14 +303,18 @@ module cache #(
             assign tx_done  = cb_yumi_i;
             assign rx_done  = cb_valid_i;
             assign rx_start = cb_valid_i; 
-            assign rx_offset_r = '0;
+            assign rx_count_r = '0;
+            assign tx_count_r = '0;
+            
+            assign cc_pkt_rx_addr   = '0;
+            assign cc_pkt_rx_addr_r = '0;
 
             assign match_dma_block = cb_valid_i;
             assign write_dma_block = match_dma_block & cc_pkt_r.we;
             
-            assign cb_pkt.wdata = block_data_r[way_index]; // eviction index stored in way_index
-            assign main_mem_rdata = cb_data_i[cc_pkt_r_offset +: 32];
-            assign evict_block_address = {block_tag_r[way_index], cc_pkt_r.addr[offset_width_lp+:index_width_lp], offset_width_lp'(0)};
+            assign cb_pkt.wdata = set_data[way_index]; // eviction index stored in way_index
+            assign main_mem_rdata = cb_data_i[cc_pkt_ib_bit_offset_r +: 32];
+            assign evict_block_address = {set_tag[way_index], cc_pkt_r.addr[offset_width_lp+:index_width_lp], offset_width_lp'(0)};
         end
     endgenerate    
 
@@ -310,76 +322,168 @@ module cache #(
 
     always_comb begin
         main_mem_wdata = cb_data_i;
-        wdata_offset = cc_pkt_r_offset - rx_offset_r;
 
         if (cc_pkt_r.be[0] & write_dma_block)
-            main_mem_wdata[wdata_offset +:8] = cc_pkt_r.wdata[7:0];
+            main_mem_wdata[cc_pkt_ib_bit_offset_r +:8] = cc_pkt_r.wdata[7:0];
         if (cc_pkt_r.be[1] & write_dma_block)
-            main_mem_wdata[wdata_offset+8 +:8] = cc_pkt_r.wdata[15:8];
+            main_mem_wdata[cc_pkt_ib_bit_offset_r+8 +:8] = cc_pkt_r.wdata[15:8];
         if (cc_pkt_r.be[2] & write_dma_block)
-            main_mem_wdata[wdata_offset+16 +:8] = cc_pkt_r.wdata[23:16];
+            main_mem_wdata[cc_pkt_ib_bit_offset_r+16 +:8] = cc_pkt_r.wdata[23:16];
         if (cc_pkt_r.be[3] & write_dma_block)
-            main_mem_wdata[wdata_offset+24 +:8] = cc_pkt_r.wdata[31:24];
+            main_mem_wdata[cc_pkt_ib_bit_offset_r+24 +:8] = cc_pkt_r.wdata[31:24];
     end
 
-    always_comb begin
-        cache_mem_n = cache_mem_r;
-        
-        // REVISIT PPA
-        if (~nreset_i) begin
-            for (int set_idx = 0; set_idx < sets_p; set_idx++) begin
-                // Iterate over all ways (columns)
-                for (int way_idx = 0; way_idx < ways_p; way_idx++) begin
-                    // Conditionally set the block_state field of every cache line to s_invalid
-                    cache_mem_n[set_idx][way_idx].block_state = s_invalid;
-                    `ifndef DISABLE_TESTING
-                    // reset to enable tag equivalence checking (not required for operation)
-                    cache_mem_n[set_idx][way_idx].tag = '0;
-                    `endif
-                end
-            end
-        end
+    logic reset, mem_ways_rd;
+    assign reset = ~nreset_i;
+    
+    logic [ways_p-1:0] mem_tag_wr, mem_tag_valid;
+    logic [tag_width_lp-1:0] mem_tag_n;
 
-        // Update block state, data, tag, and LRU on allocation
-        else if (cb_valid_i) begin
-            cache_mem_n[set_index][way_index].data[rx_offset_r +: (1 << dma_offset_incr_lp)] = main_mem_wdata;
+    logic mem_state_wr_any_way;
+    logic [index_width_lp-1:0] mem_state_addr;
+    logic [ways_p-1:0] mem_state_wr, mem_state_valid;
+    logic [state_width_lp-1:0] mem_state_n, mem_state_non_rst_n;
 
-            if (rx_start) begin
-                cache_mem_n[set_index][way_index].block_state = cc_pkt_r.we? s_modified: s_shared; // REVISIT SNOOP (s_exclusive)
-                cache_mem_n[set_index][way_index].tag = cc_pkt_r.addr[31-:tag_width_lp]; // REVISIT PIPE
-            end
-        end
+    logic mem_tag_state_valid, mem_tag_state_wr;
+    logic [(state_width_lp*ways_p)-1:0] mem_state_wmask;
+    logic [tag_state_width_lp-1:0] mem_tag_state_rdata, mem_tag_state_n, mem_tag_state_wmask;
 
-        // Upon a non-miss write, update the data and LRU fields
-        else if (cache_mem_write) begin
-            cache_mem_n[set_index][way_index].block_state = s_modified;
-
-            if (cc_pkt_r.be[0])
-                cache_mem_n[set_index][way_index].data[cc_pkt_r_offset +:8] = cc_pkt_r.wdata[7:0];
-            if (cc_pkt_r.be[1])
-                cache_mem_n[set_index][way_index].data[cc_pkt_r_offset+8 +:8] = cc_pkt_r.wdata[15:8];
-            if (cc_pkt_r.be[2])
-                cache_mem_n[set_index][way_index].data[cc_pkt_r_offset+16 +:8] = cc_pkt_r.wdata[23:16];
-            if (cc_pkt_r.be[3])
-                cache_mem_n[set_index][way_index].data[cc_pkt_r_offset+24 +:8] = cc_pkt_r.wdata[31:24];
-
-        end
-    end
+    logic mem_data_wr_any_way;
+    logic [ways_p-1:0] mem_data_wr, mem_data_valid;
+    logic [wr_mask_width_lp-1:0] mem_data_wmask;
+    logic [offset_width_lp+2:0] mem_wdata_shamt;
+    logic [offset_width_lp-1:0] mem_data_wmask_shamt;
+    logic [(dma_data_width_p*32)-1:0] mem_wdata_base;
+    logic [(dma_data_width_p*32)-1:0] mem_data_n;
+    logic [dma_byte_width_lp-1:0] mem_data_wmask_base;
+    logic [$clog2(sets_p * dma_blk_ratio_lp)-1:0] mem_data_addr, mem_data_addr_offset;
 
     // Pipe stage 2
     always_ff @(posedge clk_i) begin
-        cache_mem_r <= cache_mem_n;
         way_index_r <= cc_valid_ready_r? way_index_n: way_index_r;
     end
     
     assign way_index = cc_valid_ready_r? way_index_n: way_index_r;
+    assign cc_rdata_src = (cache_state_r == s_alloc_rx)? main_mem_rdata: set_data[way_index][cc_pkt_ib_bit_offset_r +: 32];
+    assign cc_rdata_o   = cc_rdata_src & {32{~write_complete}};
 
-    assign cc_rdata_src = (cache_state_r == s_alloc_rx)? main_mem_rdata: block_data_r[way_index][cc_pkt_r_offset +: 32];
-    assign cc_rdata_o = cc_rdata_src & {32{~write_complete}};
-
-    assign cb_pkt.we = send_eviction;
+    assign cb_pkt.we   = send_eviction;
     assign cb_pkt.addr = send_eviction? evict_block_address: {cc_pkt_r.addr[31:offset_width_lp], offset_width_lp'(0)};
-    assign cb_valid_o = send_eviction || cache_state_r == s_alloc_req || (cache_state_r == s_lookup & read_write_miss);
+    assign cb_valid_o  = send_eviction || cache_state_r == s_alloc_req || (cache_state_r == s_lookup & read_write_miss);
+
+    always_comb begin
+        // Read every way of the selected set upon transition into s_lookup
+        mem_ways_rd = (cache_state_n == s_lookup);
+
+        mem_tag_n = cc_pkt_r.addr[31-:tag_width_lp];
+        for (int w = 0; w < ways_p; w++) begin
+            mem_tag_wr[w] = cb_valid_i & rx_start & (way_index == tag_width_lp'(w));
+            mem_tag_valid[w] = mem_tag_wr[w] | mem_ways_rd;
+        end
+
+        mem_state_addr = rst_seq_done? set_index: rst_count_r;
+        mem_state_non_rst_n = (cache_mem_write | cc_pkt_r.we)? block_state_t'(s_modified): block_state_t'(s_shared); // REVISIT (snooping)
+        mem_state_n = rst_seq_done? mem_state_non_rst_n: block_state_t'(s_invalid); // reset all blocks to empty
+        
+        mem_state_wr_any_way = (cb_valid_i & rx_start) | cache_mem_write;
+        for (int w = 0; w < ways_p; w++) begin
+            mem_state_wr[w] = ~rst_seq_done | (mem_state_wr_any_way & (way_index == tag_width_lp'(w)));
+            mem_state_valid[w] = mem_state_wr[w] | mem_ways_rd;
+        end
+        
+        for (int w = 0; w < ways_p; w++) begin
+            mem_state_wmask[state_width_lp*w +: state_width_lp] = {state_width_lp{mem_state_wr[w]}};
+        end
+
+        mem_tag_state_wmask = { mem_state_wmask, {tag_width_lp{mem_tag_wr[0]}} }; // bit mask
+        mem_tag_state_n = { {ways_p{mem_state_n}}, mem_tag_n};
+        mem_tag_state_valid = |{mem_state_valid, mem_tag_valid[0]};
+        mem_tag_state_wr = |{mem_state_wr, mem_tag_wr[0]};
+
+        /* mem_data */
+        mem_data_wr_any_way = cb_valid_i | cache_mem_write;
+        for (int w = 0; w < ways_p; w++) begin
+            mem_data_wr[w] = mem_data_wr_any_way & (way_index == tag_width_lp'(w));
+            mem_data_valid[w] = mem_data_wr[w] | mem_ways_rd;
+        end
+
+        mem_data_n = cb_valid_i? main_mem_wdata: (cc_pkt_r.wdata << cc_pkt_ib_bit_offset_r);
+        mem_data_wmask = cb_valid_i? '1: {'0, cc_pkt_r.be} << cc_pkt_ib_byte_offset_r;
+        
+        if (send_eviction)
+            mem_data_addr_offset = tx_count_r;
+        else if (cache_state_r == s_alloc_rx)
+            mem_data_addr_offset = rx_count_r;
+        else if (cache_state_r == s_lookup)
+            mem_data_addr_offset = cc_pkt_rx_addr_r;
+        else
+            mem_data_addr_offset = cc_pkt_rx_addr;
+
+        mem_data_addr = (set_index << dma_blk_size_ratio_lp) + mem_data_addr_offset;
+    end
+
+    // Convert RAM0 {state, tag} structure - used to optimize SRAM generation
+    always_comb begin
+        mem_tag_rdata[0] = mem_tag_state_rdata[tag_width_lp-1:0];
+        for (int w = 0; w < ways_p; w++) begin
+            mem_state_rdata[w] = mem_tag_state_rdata[tag_width_lp+(w*state_width_lp) +: state_width_lp];
+        end
+    end
+
+    generate
+        for (w = 0; w < ways_p; w++) begin : gen_ram
+
+            if (w == 0) begin : gen_tag_state_ram
+
+                bsg_mem_1rw_sync_mask_write_bit #(
+                    .width_p(tag_state_width_lp),
+                    .els_p(sets_p)
+                ) u_mem_tag_state (
+                    .clk_i,
+                    .reset_i(reset),
+                    .data_i(mem_tag_state_n),
+                    .addr_i(mem_state_addr),
+                    .v_i(mem_tag_state_valid),
+                    .w_i(mem_tag_state_wr),
+                    .w_mask_i(mem_tag_state_wmask),
+                    .data_o(mem_tag_state_rdata)
+                );
+
+            end else begin
+
+                bsg_mem_1rw_sync #(
+                    .width_p(tag_width_lp),
+                    .els_p(sets_p)
+                ) u_mem_tag (
+                    .clk_i,
+                    .reset_i(reset),
+                    .data_i(mem_tag_n),
+                    .addr_i(set_index),
+                    .v_i(mem_tag_valid[w]),
+                    .w_i(mem_tag_wr[w]),
+                    .data_o(mem_tag_rdata[w])
+                );
+                
+            end
+
+            // Memory is structured so that each address hold dma_data_width_p words
+            // If a block is split between multiple addresses they are contiguous
+            bsg_mem_1rw_sync_mask_write_byte #(
+                .data_width_p(dma_data_width_p * 32),
+                .els_p(sets_p * dma_blk_ratio_lp)
+            ) u_mem_data (
+                .clk_i,
+                .reset_i(reset),
+                .data_i(mem_data_n),
+                .addr_i(mem_data_addr),
+                .v_i(mem_data_valid[w]),
+                .w_i(mem_data_wr[w]),
+                .write_mask_i(mem_data_wmask),
+                .data_o(mem_data_rdata[w])
+            );
+
+        end
+    endgenerate
 
     // Embedded SVAs
     `ifndef DISABLE_TESTING
@@ -410,22 +514,6 @@ module cache #(
         assign cb_pkt_we_o = cb_pkt.we;
         assign cb_pkt_addr_o = cb_pkt.addr;
         assign cb_pkt_wdata_o = cb_pkt.wdata;
-
-        logic [(block_width_p*32)-1:0] cache_mem_data_n, cache_mem_data_r;
-        assign cache_mem_data_n = cache_mem_n[set_index][way_index].data;
-        assign cache_mem_data_r = cache_mem_r[set_index][way_index].data;
-
-        logic [tag_width_lp-1:0] cc_ways_cache_mem_tag_n, cc_ways_cache_mem_tag_r;
-        assign cc_ways_cache_mem_tag_n = cache_mem_n[set_index][way_index].tag;
-        assign cc_ways_cache_mem_tag_r = cache_mem_r[set_index][way_index].tag;
-
-        logic [(block_width_p*32)-1:0] cache_mem_data_20_r, cache_mem_data_20_n;
-        assign cache_mem_data_20_r = cache_mem_r[2][0].data;
-        assign cache_mem_data_20_n = cache_mem_n[2][0].data;
-
-        block_state_t cache_mem_state_20_r, cache_mem_state_20_n;
-        assign cache_mem_state_20_r = cache_mem_r[2][0].block_state;
-        assign cache_mem_state_20_n = cache_mem_n[2][0].block_state;
 
         // Auxilliary testing code
         logic be_non_contig, cc_valid_ready_latch, cc_valid_ready_latch_r;
@@ -496,25 +584,25 @@ module cache #(
             @(posedge clk_i) p_set_full_latch and p_cc_ways_index_latch;
         endproperty
 
-        logic [sets_p-1:0] [ways_p-1:0] [tag_width_lp-1:0] cache_mem_tag_r;
-        always_comb begin
-            for (int s = 0; s < sets_p; s++) begin
-                for (int w = 0; w < ways_p; w++) begin
-                    cache_mem_tag_r[s][w] = cache_mem_r[s][w].tag; 
-                end
-            end
-        end
+        // logic [sets_p-1:0] [ways_p-1:0] [tag_width_lp-1:0] cache_mem_tag_r;
+        // always_comb begin
+        //     for (int s = 0; s < sets_p; s++) begin
+        //         for (int w = 0; w < ways_p; w++) begin
+        //             cache_mem_tag_r[s][w] = cache_mem_r[s][w].tag; 
+        //         end
+        //     end
+        // end
 
-        property p_block_tag_latch;
-            @(posedge clk_i) if (nreset_i) ~rx_start |=> cache_mem_tag_r == $past(cache_mem_tag_r);
-        endproperty
+        // property p_block_tag_latch;
+        //     @(posedge clk_i) if (nreset_i) ~rx_start |=> cache_mem_tag_r == $past(cache_mem_tag_r);
+        // endproperty
 
         property p_block_hit_one_hot;
             @(posedge clk_i) if (nreset_i) $onehot0(block_hit);
         endproperty
 
-        property p_set_way_access_one_hot;
-            @(posedge clk_i) if (nreset_i) $onehot0(gen_associative.set_access) & $onehot0(gen_associative.way_access);
+        property p_set_access_one_hot;
+            @(posedge clk_i) if (nreset_i) $onehot0(gen_associative.set_access);
         endproperty
 
         logic match_dma_block_latch, match_dma_block_latch_n;
@@ -559,11 +647,11 @@ module cache #(
                 // Assertions for block_width_not_dma_data_width
 
                 property p_rx_count_empty;
-                    @(posedge clk_i) if (nreset_i) block_width_not_dma_data_width.rx_count_r != '0 |-> cache_state_r == s_alloc_rx;
+                    @(posedge clk_i) if (nreset_i) rx_count_r != '0 |-> cache_state_r == s_alloc_rx;
                 endproperty
 
                 property p_tx_count_empty;
-                    @(posedge clk_i) if (nreset_i) block_width_not_dma_data_width.tx_count_r != '0 |-> cache_state_r == s_alloc_tx;
+                    @(posedge clk_i) if (nreset_i) tx_count_r != '0 |-> cache_state_r == s_alloc_tx;
                 endproperty
 
                 a_rx_count_empty: assert property (p_rx_count_empty)
@@ -596,14 +684,14 @@ module cache #(
         a_s_alloc_tx: assert property (p_s_alloc_tx)
             else $error("Assertion failure: State cannot stay in s_alloc_tx after tx_done.");
 
-        a_tag_latch: assert property (p_block_tag_latch)
-            else $error("Assertion failure: Block tag can only change on miss completion.");
+        // a_tag_latch: assert property (p_block_tag_latch)
+        //     else $error("Assertion failure: Block tag can only change on miss completion.");
 
         a_block_hit_one_hot: assert property (p_block_hit_one_hot)
             else $error("Assertion failure: Only one block can be triggered hit at once.");
 
-        a_set_way_access_one_hot: assert property (p_set_way_access_one_hot)
-            else $error("Assertion failure: Only one set/way can be triggered hit at once.");
+        a_set_access_one_hot: assert property (p_set_access_one_hot)
+            else $error("Assertion failure: Only one set can be triggered hit at once.");
 
         a_match_dma_block_once: assert property (p_match_dma_block_once)
             else $error("Assertion failure: Must match_dma_block exactly once per s_alloc_rx loop.");

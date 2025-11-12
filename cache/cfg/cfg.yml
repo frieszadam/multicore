@@ -1,5 +1,5 @@
 # Set top level for synthesis
-synthesis.inputs.top_module: "cache"
+synthesis.inputs.top_module: "cache_top"
 
 vlsi.inputs:
   custom_sdc_files:
@@ -16,7 +16,14 @@ vlsi.inputs.placement_constraints:
     y: 0
     margins: {left: 0, right: 0, top: 0, bottom: 0}
 
-# vlsi.inputs.sram_parameters: [
-#   {name: "fakeram_d128_w32", family: "1rw", depth: 128, width: 32, mask: True,
-#    mux: 1, vt: ""},
-# ]
+vlsi.inputs.sram_parameters: [
+  # REVISIT tag + state ram | depth: sets_p | width: (state_width_lp * ways_p) + tag_width_lp
+  {name: "fakeram_d64_w28", family: "1rw", depth: 64, width: 28, mask: True,
+   mux: 1, vt: ""},
+  # tag ram | depth: sets_p | width: tag_width_lp
+  {name: "fakeram_d64_w20", family: "1rw", depth: 64, width: 20, mask: True,
+   mux: 1, vt: ""},
+  #  # data ram | depth: sets_p * dma_blk_ratio_lp | width: (32 * dma_data_width_p)
+  {name: "fakeram_d320_w64", family: "1rw", depth: 512, width: 64, mask: True,
+   mux: 1, vt: ""},
+]
