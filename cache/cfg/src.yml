@@ -16,6 +16,7 @@ synthesis.inputs.input_files: [
   "${bsg_root}/bsg_mem/bsg_mem_1rw_sync_mask_write_bit.sv",
   "${bsg_root}/bsg_mem/bsg_mem_1rw_sync_mask_write_bit_synth.sv",
 
+  "v/fifo.sv",
   "v/index_lru.sv",
   "v/cache.sv",
   "v/cache_top.sv"

@@ -32,48 +32,16 @@ module main_memory #(
     logic [31:0] mem_data_n [els_p-1:0];
     logic [addr_size_lp-1:0] mem_addr;
 
-    generate
-        if (block_width_p != dma_data_width_p) begin : block_size_not_dma_data_width
-            logic rd_state_r, rd_state_n, rd_set, rd_clr;
-            logic [dma_blk_ratio_lp-1:0] rd_count_r, rd_count_n;
-            logic [block_size_lp-1:0] mem_addr_offset;
-            
-            assign mem_addr_offset = rd_state_n? (rd_count_r << dma_data_size_lp): mem_addr_i[block_size_lp+1:2];
-            assign mem_addr = {'0, mem_addr_i[safe_upper_addr_lp:block_size_lp+2], mem_addr_offset};
-            assign mem_valid_o = rd_state_r;
-            assign mem_ready_o = ~rd_state_r; // REVISIT MODEL
+    assign mem_addr = mem_addr_i[safe_upper_addr_lp:2];
+    assign mem_ready_o = 1'b1; // REVISIT MODEL
+    assign mem_data_o = mem_rdata_r & {dma_data_width_p*32{mem_valid_o}};
 
-            // Read counter logic, step through block    
-            assign rd_set = mem_valid_i & mem_ready_o & ~mem_we_i;
-            assign rd_clr = rd_state_r & (rd_count_r == '0);
-            assign rd_state_n = (rd_state_r & ~rd_clr) | rd_set;
-            assign rd_count_n = rd_count_r + {'0, rd_state_n};
-
-            always_ff @(posedge clk_i) begin
-                if (~nreset_i) begin
-                    rd_state_r <= '0;
-                    rd_count_r <= '0;
-                end else begin
-                    rd_state_r <= rd_state_n;
-                    rd_count_r <= rd_count_n;
-                end
-            end
-
-        end else begin : block_size_eq_dma_data_width
-            assign mem_addr = mem_addr_i[safe_upper_addr_lp:2];
-            assign mem_ready_o = 1'b1; // REVISIT MODEL
-
-            always_ff @(posedge clk_i) begin
-                if (~nreset_i)
-                    mem_valid_o <= 1'b0;
-                else
-                    mem_valid_o <= mem_valid_i & ~mem_we_i;
-            end
-
-        end
-    endgenerate
-
-    assign mem_data_o = mem_rdata_r;
+    always_ff @(posedge clk_i) begin
+        if (~nreset_i)
+            mem_valid_o <= 1'b0;
+        else
+            mem_valid_o <= mem_valid_i & ~mem_we_i;
+    end
 
     always_comb begin
         mem_data_n = mem_data_r;

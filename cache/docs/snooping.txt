@@ -1,0 +1,32 @@
+Snooping Implementation
+
+All requests that miss in L1 are then snooped upon at the L2 bus.
+Requests are marked with whether they correspond to a write invalidate
+or a read forward request.
+
+Pseudocode
+if (read transaction)
+  if (tag_matches and block_modified)
+    assert match
+    finish current core request, place any mm req at bus
+    send data to requester
+    set block_state shared
+
+// not exclusive with the read, since write allocate is implemented
+// write invalidate also broadcasted upon write with block loaded to
+// maintain coherency. in this case we lose mm access bandwidth since
+// it is passed through the access FIFO (REVISIT, FIFO modification)
+if (write invalidate)
+  if (tag_matches and block_active)
+    assert match
+    finish current core request, place any mm req at bus
+    set block_state invalid
+    // do not need to write data back to main memory since we've already
+    // forwarded the data to the new owner
+
+Architecture Changes
+Cache tag and state SRAM blocks are duplicated so snoop tag checking
+doesn't disrupt normal cache processing.
+
+Change order of setting block_state, we should only set to written once we
+have completed the write to ensure that we don't unecessarily forward data

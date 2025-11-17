@@ -16,8 +16,8 @@ module cache_tb ();
     localparam block_width_lp = 16;
     localparam sets_lp = 64;
     localparam ways_lp = 4;
-    localparam dma_data_width_lp = 2;
-    localparam num_caches_lp = 1;
+    localparam dma_data_width_lp = 8;
+    localparam num_caches_lp = 2;
 
     localparam mem_addr_width_lp = 11;
     localparam init_file_lp  = "../../tb/dma_init.mem";
