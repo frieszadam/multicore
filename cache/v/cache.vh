@@ -6,14 +6,21 @@
 // Macro functions are used to pass parameters to struct declarations
 `define core_cache_pkt_width 69
 `define cache_bus_pkt_width(dma_data_width_p) \
-    (33 + 32 * dma_data_width_p)
+    (34 + 32 * dma_data_width_p)
 
 `define dma_offset_incr(dma_data_size_p) \
     (1 << (5 + dma_data_size_lp))
 
+`define BUS_RD  1'b0
+`define BUS_RDX 1'b1
+`define BLOCK_STATE_INVALID 1'b0
+`define BLOCK_STATE_SHARED  1'b1
+
+typedef enum logic [1:0] {op_write_back, op_ld_exclusive, op_ld_shared, op_up_exclusive} bus_req_type_t;
+
 `define declare_cache_bus_pkt_t(dma_data_width_p) \
     typedef struct packed {                       \
-        logic we;                                 \
+        bus_req_type_t req_type;                     \
         logic [31:0] addr;                        \
         logic [(32*dma_data_width_p)-1:0] wdata;  \
     } cache_bus_pkt_t
@@ -25,4 +32,12 @@
         logic [(32*block_width_p)-1:0] data;              \
     } cache_block_t
 
+    typedef struct packed {
+        logic we;           // write enable bit
+        logic [3:0] be;     // byte enable
+        logic [31:0] addr;
+        logic [31:0] wdata; // write data
+    } core_cache_pkt_t;
+
+    typedef enum logic [1:0] {s_invalid, s_exclusive, s_shared, s_modified} block_state_t;
 `endif

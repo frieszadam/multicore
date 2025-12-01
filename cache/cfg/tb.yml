@@ -13,6 +13,7 @@ sim.inputs.tb_input_files: [
   "${bsg_root}/bsg_test/bsg_nonsynth_reset_gen.sv",
   "${bsg_root}/bsg_legacy/bsg_fsb/bsg_fsb_node_trace_replay.v",
 
+  "v/snoop_controller.sv",
   "v/bus.sv",
   "v/priority_lru.sv",
   "v/main_memory.sv",

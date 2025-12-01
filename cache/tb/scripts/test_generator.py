@@ -5,19 +5,15 @@ input stimulus and expected output results reported by software models.
 """
 
 import sys, re, os
-import random, math
+import random, argparse
+from collections import deque
 from hardware_interface import *
 from mem_cache_model import *
 sys.path.append('tb/scripts')
 
-# Constrain addresses for more interesting interactions
-addr_range_start = 0x1000
-addr_range_end = 0x2000
+WORD_SIZE = 4
 
-total_address_bits = 32 # default
-cache_directory = os.environ.get('CACHE_DIR')
-
-def get_cache_params():
+def get_cache_params(cache_dir):
     # Extract cache parameters from testbench instantiation
     # Initialize variables to store the extracted values (as strings)
     block_width_p = None
@@ -30,7 +26,7 @@ def get_cache_params():
     found_ways = False
     found_addr_width = False
 
-    with open(f"{cache_directory}/tb/cache_tb.sv", 'r') as f:
+    with open(f"{cache_dir}/tb/cache_tb.sv", 'r') as f:
         for line in f:
             if not found_blocks:
                 match_blocks = re.search(r'localparam block_width_lp = \s*(\d+)', line)
@@ -65,27 +61,12 @@ def get_cache_params():
 def get_random_address(addr_range_start, addr_range_end):
     return random.randrange(addr_range_start, addr_range_end) & ~0b11
 
-def get_random_address_set(set_index):
-    """
-    Generates a random 32-bit address that maps to the specified set_index.
-    """
-    
-    offset_bits = math.ceil(math.log2(block_width_p))    
-    random_addr = random.getrandbits(total_address_bits)
-
-    clear_mask = ~((1 << sets_p) - 1) << block_width_p
-    cleared_addr = random_addr & clear_mask
-    final_addr = cleared_addr | (set_index << offset_bits)
-    
-    return final_addr
-
 def get_random_wdata():
     return random.randrange(0, 2**32)
 
 def get_random_be():
     valid_be = [0b1111, 0b1100, 0b0110, 0b0011, 0b1000, 0b0100, 0b0010, 0b0001, 0b0000]
-    rand_index = random.randrange(0, len(valid_be))
-    return valid_be[rand_index]
+    return random.choice(valid_be)
 
 def send_command(hardware_interface, mem_model, we, addr, be, wdata):
     hardware_interface.send(we, addr, be, wdata)
@@ -96,55 +77,164 @@ def send_command(hardware_interface, mem_model, we, addr, be, wdata):
         rdata = mem_model.read(addr)
         hardware_interface.recv(rdata)
 
+# Sequence of random reads and writes with non-overlapping address ranges for each core
+def test_sanity(interfaces, mem_model, mem_limit, **kwargs):
+    addr_range_incr = int(mem_limit / num_caches_p)
+
+    for c, intf in enumerate(interfaces):
+        wr_addr_set = set()
+
+        # Ensure that accesses do not overlap
+        start = c * addr_range_incr
+        end   = (c + 1) * addr_range_incr
+        print(f"Core {c} restricted to range: {hex(start)} - {hex(end)}")
+
+        # Simple write and read written value test with distinct address spaces
+        for i in range(5000):
+            addr = get_random_address(start, end)
+
+            if (random.random() < 0.6):
+                # send read
+                send_command(intf, mem_model, 0, addr, 0b1111, 0)
+            elif (random.random() < 0.9):
+                wdata = get_random_wdata()
+                be = get_random_be()
+                send_command(intf, mem_model, 1, addr, be, wdata)
+                wr_addr_set.add(addr)
+            else:
+                wait_period = random.randrange(10)
+                intf.wait(wait_period)
+        
+        for addr in wr_addr_set:
+            send_command(intf, mem_model, 0, addr, 0b1111, 0)
+
+def prune_history(history, global_id, min_dist):
+    while history and (global_id - history[0][2] >= min_dist):
+        history.popleft()
+
+def is_hazard(history, block_addr, core_id, min_dist, global_id):
+    for hist_addr, hist_core, hist_id in history:
+        if hist_addr == block_addr:
+            # Conflict if: Same Block AND Different Core
+            if hist_core != core_id:
+                return True
+    return False
+
+def verify_memory(interfaces, mem_model, addr_set, wait_cycles):
+    # Wait for transactions to settle
+    total_wait = wait_cycles * len(interfaces)
+    for intf in interfaces:
+        intf.wait(total_wait)
+        
+    # Read back all touched addresses from every core
+    for addr in addr_set:
+        for intf in interfaces:
+            send_command(intf, mem_model, 0, addr, 0b1111, 0)
+    
+    print(f"Verified {len(addr_set)} unique blocks across {len(interfaces)} cores.")
+
+# Sequence of random reads and writes with overlapping address ranges for each core
+# Outlaws writes to the same block within a minimum distance
+def test_coherence_random(interfaces, mem_model, mem_limit, **kwargs):
+    min_overlap_dist = 10 * len(interfaces)
+    num_tests = 100
+    
+    global_write_id = 0
+    write_history = deque() # Stores (block_addr, core_id, write_id)
+    wr_addr_set = set()
+
+    for _ in range(num_tests):
+        for c, intf in enumerate(interfaces):
+            prune_history(write_history, global_write_id, min_overlap_dist)
+            
+            # Find non-conflicting address
+            while True:
+                addr = get_random_address(0, mem_limit)
+                block_addr = addr & ~(block_width_bytes - 1)
+                
+                if not is_hazard(write_history, block_addr, c, min_overlap_dist, global_write_id):
+                    break
+
+            if random.random() < 0.5:
+                send_command(intf, mem_model, 0, addr, 0b1111, 0)
+            else:
+                wdata = get_random_wdata()
+                send_command(intf, mem_model, 1, addr, 0b1111, wdata)
+                
+                wr_addr_set.add(block_addr)
+                write_history.append((block_addr, c, global_write_id))
+                global_write_id += 1
+
+    verify_memory(interfaces, mem_model, wr_addr_set, min_overlap_dist)
+
+# Sequence of random reads and writes with overlapping address ranges for each core
+# Allows writes to different words of the same block to test false sharing
+def test_false_sharing(interfaces, mem_model, mem_limit, **kwargs):
+    num_tests = 50
+    wr_addr_set = set()
+
+    for _ in range(num_tests):
+        # Pick one block for all cores to fight over
+        base_addr = get_random_address(0, mem_limit)
+        block_addr = base_addr & ~(block_width_bytes - 1)
+        wr_addr_set.add(block_addr)
+
+        # Force every core to write to a distinct offset in this block
+        for c, intf in enumerate(interfaces):
+            # Calculate unique offset per core to avoid data overwrites
+            # but ensure block collision
+            offset = (c * WORD_SIZE) % block_width_bytes
+            addr = block_addr + offset
+            
+            wdata = get_random_wdata()
+            send_command(intf, mem_model, 1, addr, 0b1111, wdata)
+
+    verify_memory(interfaces, mem_model, wr_addr_set, 10)
+
+TEST_REGISTRY = {
+    "sanity": test_sanity,
+    "coherence": test_coherence_random,
+    "false_sharing": test_false_sharing
+}
+
 #   main()
 if __name__ == "__main__":
-    seed = int(sys.argv[1])  
-    print("Using command-line input seed {}".format(seed))
-    random.seed(seed)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--test', default="sanity", choices=TEST_REGISTRY.keys())
+    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--mem_init', default="DMA_INIT.mem")
+    parser.add_argument('--num_caches', type=int, default=2)
+    parser.add_argument('--verbosity', default=False)
+    parser.add_argument('--cache_dir')
 
-    dma_mem_file = sys.argv[2]
-    num_caches_p  = int(sys.argv[3])
-    verbosity_on = sys.argv[4]
+    args = parser.parse_args()
 
-    block_width_p, sets_p, ways_p, addr_width_p = get_cache_params()
-    block_size_bytes = block_width_p * 4
-    cache_size_bytes = block_size_bytes * ways_p * sets_p
+    random.seed(args.seed)
+    num_caches_p = args.num_caches
 
-    total_address_bits = addr_width_p + 2
-    addr_range_incr = int((2**total_address_bits) / num_caches_p)
+    block_width_p, sets_p, ways_p, addr_width_p = get_cache_params(args.cache_dir)
+    block_width_bytes = block_width_p * 4
+    # cache_size_bytes = block_width_bytes * ways_p * sets_p
 
-    if os.path.isfile(dma_mem_file):
-        mem_model = MemoryModel.from_file(dma_mem_file)
+    if os.path.isfile(args.mem_init):
+        mem_model = MemoryModel.from_file(args.mem_init)
     else:
         mem_model = MemoryModel()
     
     hardware_interface_list = []
     for c in range(num_caches_p):
         intf_name = "core_intf" + str(c)
-        hardware_interface_list.append(HardwareInterface(intf_name, verbose=verbosity_on))
+        hardware_interface_list.append(HardwareInterface(intf_name, verbose=args.verbosity))
 
-    for c in range(num_caches_p):
-        wr_addr_list = []
+    test_func = TEST_REGISTRY[args.test]
+    test_func(
+        interfaces=hardware_interface_list,
+        mem_model=mem_model,
+        mem_limit=2**(addr_width_p + 2),
+        block_width_bytes=block_width_bytes
+    )
 
-        # Ensure that accesses do not overlap for now
-        addr_range_start = c * addr_range_incr
-        addr_range_end   = (c + 1) * addr_range_incr
-
-        # Simple write and read written value test
-        for i in range(5000):
-            addr = get_random_address(addr_range_start, addr_range_end)
-
-            if (random.random() < 0.7):
-                send_command(hardware_interface_list[c], mem_model, 0, addr, 0b1111, 0)
-            else:
-                wdata = get_random_wdata()
-                be = get_random_be()
-                send_command(hardware_interface_list[c], mem_model, 1, addr, be, wdata)
-                wr_addr_list.append(addr)
-        
-        for addr in wr_addr_list:
-            send_command(hardware_interface_list[c], mem_model, 0, addr, 0b1111, 0)
-      
+    for c in range(num_caches_p):      
         #### DONE ####
         hardware_interface_list[c].wait(10)
         hardware_interface_list[c].done()

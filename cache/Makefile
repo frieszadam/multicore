@@ -19,13 +19,14 @@ CACHE_DIR = $(abspath .)
 SEED ?= "123"
 VERBOSE ?= "False"
 NUM_CACHE ?= 2
+TEST ?= "sanity"
 
 gen_dma_init:
 	CACHE_DIR=$(CACHE_DIR) python3 tb/scripts/gen_dma_init.py $(SEED)
 
-# make gen_rom SEED=<SEED> DMA_MEM=<DMA_MEM> NUM_CACHE=<NUM_CACHE> VERBOSE=<VERBOSITY_ON>
+# make gen_rom TEST=<TEST> NUM_CACHE=<NUM_CACHE> SEED=<SEED> DMA_MEM=<DMA_MEM> VERBOSE=<VERBOSITY_ON>
 gen_rom:
-	CACHE_DIR=$(CACHE_DIR) python3 tb/scripts/test_generator.py $(SEED) $(CACHE_DIR)/tb/$(DMA_MEM) $(NUM_CACHE) $(VERBOSE); \
+	python3 tb/scripts/test_generator.py --seed $(SEED) --cache_dir $(CACHE_DIR) --test $(TEST) --mem_init $(CACHE_DIR)/tb/$(DMA_MEM) --num_cache $(NUM_CACHE) --verbosity $(VERBOSE); \
 	for ((i = 0; i <$(NUM_CACHE); i++)); do \
 		python3 $(BASEJUMP_STL_PATH)/bsg_mem/bsg_ascii_to_rom.py $(CORE_TRACE_FILE)$$i.tr $(CORE_TRACE_ROM)$$i \
 		> $(CORE_TRACE_ROM_V)$$i.v; \
