@@ -60,7 +60,7 @@ module snoop_controller #(
             s_check_hit: begin
                 if (valid_block_hit & state_eq_mod)
                     control_state_n = s_rd_data;
-                else if (valid_block_hit & req_type_ex & ~sc_ready_i)
+                else if (valid_block_hit & ~sc_ready_i & (req_type_ex | state_eq_ex))
                     control_state_n = s_set_state;
                 else
                     control_state_n = s_idle;
@@ -91,20 +91,21 @@ module snoop_controller #(
     assign sc_rdata_en_o = control_state_n == s_rd_data;
     assign sc_raddr_o = bus_pkt.addr;
     
-    // Set state at end of reading the block for state_eq_mod or else when sc_ready_i
+    // Set state at the start of read transaction
     assign sc_set_state_o = sc_ready_i & ( (control_state_r == s_rd_data & ~set_state_r) |
-        (control_state_r == s_set_state ) | (valid_block_hit & (req_type_ex | state_eq_mod)) );
+        (control_state_r == s_set_state ) | (valid_block_hit & (req_type_ex | state_eq_mod | state_eq_ex)) );
     assign sc_state_invalid_o = req_type_ex;
 
     // snoop bus interface
-    assign sb_wait_o  = control_state_r != s_idle & control_state_n != s_idle; // (control_state_r == s_check_hit & valid_block_hit) | (~sc_ready_i & (control_state_r == s_set_state | control_state_r == s_rd_data));
-    assign sb_valid_o = sc_rd_data_valid_r; // (control_state_r == s_rd_data) & <- REVISIT most recent change
+    assign sb_wait_o  = control_state_r != s_idle & control_state_n != s_idle;
+    assign sb_valid_o = sc_rd_data_valid_r;
     assign sb_data_o  = {(dma_data_width_p*32){sb_valid_o}} & sc_rdata_i;
     assign sb_hit_o   = valid_block_hit;
 
     `ifndef DISABLE_TESTING
         property p_no_upgrade_from_exclusive;
-            @(posedge clk_i) if (nreset_i) ~( (bus_pkt_req_type == op_up_exclusive) & (state_eq_mod | state_eq_ex) );
+            @(posedge clk_i) if (nreset_i)
+                sb_valid_i & (bus_pkt_req_type == op_up_exclusive) |-> ~(sc_block_hit_i & (state_eq_mod | state_eq_ex));
         endproperty
 
         a_no_upgrade_from_exclusive: assert property (p_no_upgrade_from_exclusive)

@@ -295,23 +295,25 @@ module cache_tb ();
                 assign cache_idle_r[i] = gen_cache_core[i].u_dut.cache_state_r == '0;
                 assign cache_idle_n[i] = gen_cache_core[i].u_dut.cache_state_n == '0;
             end
-        endgenerate
 
-        logic control_state_active;
-        always_comb begin
-            control_state_active = 1'b0;
-            for (int c = 0; c < num_caches_lp; c++) begin
-                control_state_active = control_state_active | ~sc_idle_r[c];
+            if (num_caches_lp != 1) begin
+                logic control_state_active;
+                always_comb begin
+                    control_state_active = 1'b0;
+                    for (int c = 0; c < num_caches_lp; c++) begin
+                        control_state_active = control_state_active | ~sc_idle_r[c];
+                    end
+                end
+
+                property p_bus_ready_control_state_idle;
+                    @(posedge clk) if (nreset)
+                        u_bus.gen_multi_cache.bus_state_r == '0 |-> ~control_state_active;
+                endproperty
+
+                a_bus_ready_control_state_idle: assert property (p_bus_ready_control_state_idle)
+                    else $error("Assertion failure: All snoop controller must be idle when bus is idle.");
             end
-        end
-
-        property p_bus_ready_control_state_idle;
-            @(posedge clk) if (nreset)
-                u_bus.gen_multi_cache.bus_state_r == '0 |-> ~control_state_active;
-        endproperty
-
-        a_bus_ready_control_state_idle: assert property (p_bus_ready_control_state_idle)
-            else $error("Assertion failure: All snoop controller must be idle when bus is idle.");
+        endgenerate
 
         // Not true when we allocate an eviction this is not bursted with the read request
         // property p_bus_ready_prev_cache_done;

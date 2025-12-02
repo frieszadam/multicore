@@ -11,11 +11,6 @@
 `define dma_offset_incr(dma_data_size_p) \
     (1 << (5 + dma_data_size_lp))
 
-`define BUS_RD  1'b0
-`define BUS_RDX 1'b1
-`define BLOCK_STATE_INVALID 1'b0
-`define BLOCK_STATE_SHARED  1'b1
-
 typedef enum logic [1:0] {op_write_back, op_ld_exclusive, op_ld_shared, op_up_exclusive} bus_req_type_t;
 
 `define declare_cache_bus_pkt_t(dma_data_width_p) \
@@ -40,4 +35,5 @@ typedef enum logic [1:0] {op_write_back, op_ld_exclusive, op_ld_shared, op_up_ex
     } core_cache_pkt_t;
 
     typedef enum logic [1:0] {s_invalid, s_exclusive, s_shared, s_modified} block_state_t;
+
 `endif

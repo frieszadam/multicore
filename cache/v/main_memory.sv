@@ -40,7 +40,7 @@ module main_memory #(
         if (~nreset_i)
             mem_valid_o <= 1'b0;
         else
-            mem_valid_o <= mem_valid_i;
+            mem_valid_o <= mem_valid_i & ~mem_we_i;
     end
 
     always_comb begin

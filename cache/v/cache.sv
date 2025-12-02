@@ -102,7 +102,7 @@ module cache #(
     logic [31:0] cc_rdata_src;
     logic [31:0] main_mem_rdata;
 
-    typedef enum logic [2:0] {s_idle, s_lookup, s_alloc_ex, s_alloc_wr, s_alloc_rd, s_rx_ex, s_rx_rd} cache_control_t;
+    typedef enum logic [2:0] {s_idle, s_lookup, s_up_ex, s_alloc_wr, s_alloc_rd, s_rx_rd} cache_control_t;
     cache_control_t cache_state_r, cache_state_n;
 
     assign cc_valid_ready = cc_valid_i & cc_ready_o;
@@ -237,15 +237,14 @@ module cache #(
                     else
                         cache_state_n = tx_done? s_rx_rd: s_alloc_rd;
                 end else if (cc_pkt_r.we & set_state[way_index] == s_shared) begin
-                    cache_state_n = cb_yumi_i? s_rx_ex: s_alloc_ex;
+                    cache_state_n = (cb_yumi_i & cb_valid_i)? s_idle: s_up_ex;
                 end else begin
                     cache_state_n = s_idle;
                 end
             end
-            s_alloc_ex: cache_state_n = cb_yumi_i? s_rx_ex: s_alloc_ex;
+            s_up_ex: cache_state_n = cb_yumi_i & cb_valid_i? s_idle: s_up_ex;
             s_alloc_wr: cache_state_n = tx_done? s_alloc_rd: s_alloc_wr; // evict
             s_alloc_rd: cache_state_n = tx_done? (rx_done? s_idle: s_rx_rd): s_alloc_rd;
-            s_rx_ex: cache_state_n = cb_valid_i? s_idle: s_rx_ex;
             s_rx_rd: cache_state_n = rx_done? s_idle: s_rx_rd;
             default:    cache_state_n = s_idle;
         endcase
@@ -263,12 +262,12 @@ module cache #(
     logic [$clog2(sets_p * dma_blk_ratio_lp)-1:0] mem_data_addr_offset;
 
     assign cache_mem_write = cc_pkt_r.we & ((cache_state_r == s_lookup & ~read_write_miss & set_state[way_index] != s_shared) |
-        (cache_state_r == s_rx_ex & cb_valid_i));
+        (cache_state_r == s_up_ex & cb_valid_i));
 
     assign cc_ready_o = (cache_state_r == s_idle) & rst_seq_done & ~sc_reserved_r;
     assign cc_valid_o = cache_state_r != s_idle & cache_state_n == s_idle;
 
-    assign non_ack_cb_valid = cb_valid_i & ~(cache_state_r == s_rx_ex);
+    assign non_ack_cb_valid = cb_valid_i & ~(cache_state_r == s_up_ex);
 
     generate
         if (block_width_p != dma_data_width_p) begin : block_width_not_dma_data_width
@@ -388,7 +387,7 @@ module cache #(
     assign cc_rdata_o   = cc_rdata_src & {32{cc_valid_o & ~cc_pkt_r.we}};
 
     assign cb_pkt.addr = cb_addr_lo;
-    assign cb_valid_o  = send_eviction | cache_state_r == s_alloc_rd | cache_state_r == s_alloc_ex |
+    assign cb_valid_o  = send_eviction | cache_state_r == s_alloc_rd | cache_state_r == s_up_ex |
         (cache_state_r == s_lookup & read_write_miss & ~start_eviction);
     assign cb_pkt.wdata = set_data[way_index];
 
@@ -397,7 +396,7 @@ module cache #(
             cb_pkt.req_type = op_write_back;
         else if (cc_pkt_r.we & (read_write_miss | cache_state_r == s_alloc_rd))
             cb_pkt.req_type = op_ld_exclusive;
-        else if (cc_pkt_r.we & (~read_write_miss | s_alloc_ex))
+        else if (cc_pkt_r.we & (~read_write_miss | s_up_ex))
             cb_pkt.req_type = op_up_exclusive;
         else
             cb_pkt.req_type = op_ld_shared;
@@ -486,11 +485,11 @@ module cache #(
 
         mem_tag_n = cc_pkt_r.addr[31-:tag_width_lp];
         for (int w = 0; w < ways_p; w++) begin
-            mem_tag_wr[w] = rx_start & (way_index == tag_width_lp'(w));
+            mem_tag_wr[w] = rx_start & (way_index == ways_size_lp'(w));
             mem_tag_valid[w] = mem_tag_wr[w] | mem_ways_rd;
         end
 
-        mem_state_addr = rst_seq_done? (sc_set_state_valid? snp_set_index: set_index): rst_count_r;
+        mem_state_addr = rst_seq_done? (sc_set_state_valid? snp_set_index: set_index): rst_count_r[index_width_lp-1:0];
         if (~rst_seq_done)
             mem_state_n = block_state_t'(s_invalid);
         else if (sc_set_state_i)
@@ -508,7 +507,7 @@ module cache #(
         mem_state_wr_en = mem_state_wr_any_way | ~rst_seq_done;
         mem_state_valid = mem_state_wr_en | mem_ways_rd;
         for (int w = 0; w < ways_p; w++) begin
-            mem_state_wr[w] = ~rst_seq_done | (mem_state_wr_any_way & (mem_way_index == tag_width_lp'(w)));
+            mem_state_wr[w] = ~rst_seq_done | (mem_state_wr_any_way & (mem_way_index == ways_size_lp'(w)));
         end
         
         for (int w = 0; w < ways_p; w++) begin
@@ -518,7 +517,7 @@ module cache #(
         /* mem_data */
         mem_data_wr_any_way = non_ack_cb_valid | cache_mem_write;
         for (int w = 0; w < ways_p; w++) begin
-            mem_data_wr[w] = mem_data_wr_any_way & (way_index == tag_width_lp'(w));
+            mem_data_wr[w] = mem_data_wr_any_way & (way_index == ways_size_lp'(w));
             mem_data_valid[w] = mem_data_wr[w] | mem_ways_rd | rd_eviction | sc_rd_data_valid;
         end
 
@@ -667,7 +666,7 @@ module cache #(
         // Properties
         property p_main_mem_rx;
             @(posedge clk_i) if (nreset_i)
-                cb_valid_i |-> cache_state_r == s_rx_rd || cache_state_r == s_alloc_rd || cache_state_r == s_rx_ex;
+                cb_valid_i |-> cache_state_r == s_rx_rd || cache_state_r == s_alloc_rd || cache_state_r == s_up_ex;
         endproperty
 
         property p_be_contiguous;
@@ -690,13 +689,13 @@ module cache #(
                 (cache_state_r == s_alloc_wr) & tx_done |=> cache_state_r != s_alloc_wr;
         endproperty
 
-        property p_cc_ways_index_latch;
-            @(posedge clk_i) if (nreset_i & $past(nreset_i) & cc_valid_ready_latch)
+        property p_ways_index_latch;
+            @(posedge clk_i) if (nreset_i & $past(nreset_i) & cc_valid_ready_latch_r)
                 (cache_state_r != s_lookup) |-> way_index == $past(way_index);
         endproperty
 
         property p_set_full_latch;
-            @(posedge clk_i) if (nreset_i & $past(nreset_i) & cc_valid_ready_latch)
+            @(posedge clk_i) if (nreset_i & $past(nreset_i) & cc_valid_ready_latch_r)
                 (cache_state_r != s_lookup) |-> set_full == $past(set_full);
         endproperty
 
@@ -706,7 +705,7 @@ module cache #(
         endproperty
 
         property p_s_lookup_latch;
-            @(posedge clk_i) p_set_full_latch and p_cc_ways_index_latch;
+            @(posedge clk_i) p_set_full_latch and p_ways_index_latch;
         endproperty
 
         // logic [sets_p-1:0] [ways_p-1:0] [tag_width_lp-1:0] cache_mem_tag_r;
@@ -807,7 +806,7 @@ module cache #(
         
         // Property assertions
         a_main_mem_rx: assert property (p_main_mem_rx)
-            else $error("Assertion failure: Cannot receive memory response unless in s_rx_rd, s_alloc_rd, or s_alloc_ex.");
+            else $error("Assertion failure: Cannot receive memory response unless in s_rx_rd, s_alloc_rd, or s_up_ex.");
 
         a_be_contiguous: assert property (p_be_contiguous)
             else $error("Assertion failure: Byte enable must be contiguous.");
