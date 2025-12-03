@@ -55,7 +55,7 @@ module bus #(
     logic tx_inactive;
     logic [num_cache_size_lp-1:0] tx_cache_id;
     logic [num_caches_p-1:0] sb_wait_valid;
-    logic tx_done, rx_done, tx_done_r;
+    logic tx_done, rx_done;
 
     always_comb begin
         for (int c = 0; c < num_caches_p; c++)
@@ -108,13 +108,6 @@ module bus #(
         end
     endgenerate
 
-    always_ff @(posedge clk_i) begin
-        if (~nreset_i)
-            tx_done_r <= 1'b0;
-        else
-            tx_done_r <= tx_done;
-    end
-
     // multicore vs single core case
     generate
         if (num_caches_p == 1) begin : gen_one_cache
@@ -147,7 +140,7 @@ module bus #(
             logic of_enq_ready, lru_valid_li, if_enq_ready, if_enq, if_deq, if_full, if_empty, rx_wr_op;
 
             logic tx_begin, tx_ongoing, ld_shared_n, ld_shared_r, sb_valid_fwd_cache, yumi_state_valid,
-                sb_valid_op_up_ex, of_deq_ready, yumi_ahead_r, yumi_done_r, cache_fwd_yumi; // cache_tx_ahead_r
+                sb_valid_op_up_ex, of_deq_ready, yumi_ahead_r, yumi_done_r, cache_fwd_yumi;
             logic [(dma_data_width_p*32)-1:0] sb_rdata;
             logic [num_cache_size_lp:0] if_wdata, if_rdata;
             logic [num_caches_p-1:0] tx_cache_id_dec, cb_pkt_up;
@@ -358,15 +351,10 @@ module bus #(
             assign if_enq_ready = ~if_full | if_deq;
             assign if_enq = if_enq_ready & bus_state_r == s_wait & bus_state_n != s_wait & ~|sb_valid_i & curr_req_type != op_up_exclusive & curr_req_type != op_write_back;
             assign if_deq = rx_done;
-            
-            // wire logic mem_wr_op = |{curr_req_type == bus_req_type_t'(op_write_back), sb_valid_i};
-            // assign if_wdata = {mem_wr_op, tx_cache_id};
-            // assign rx_cache_id = if_rdata[num_cache_size_lp-1:0];
-            // assign rx_wr_op = if_rdata[num_cache_size_lp];
-            
+                        
             // holds cache id to route responses coming back from main mem
             fifo #(
-                .data_width_p(num_cache_size_lp + 1),
+                .data_width_p(num_cache_size_lp),
                 .els_p(num_caches_p)
             ) u_in_fifo (
                 .clk_i,
@@ -392,13 +380,6 @@ module bus #(
                 a_unexpected_mem_valid: assert property (p_unexpected_mem_valid)
                     else $error("Assertion failure: in-FIFO cannot be empty when mem_valid_i is asserted.");
 
-                // property p_yumi_inactive_in_fifo_full;
-                //     @(posedge clk_i) if (nreset_i) |yumi_inactive |-> if_enq_ready | cb_pkt_up[new_cache_id];
-                // endproperty
-
-                // a_yumi_inactive_in_fifo_full: assert property (p_yumi_inactive_in_fifo_full)
-                //     else $error("Assertion failure: Cannot accept a new request when either in-FIFO is full.");
-
                 property p_if_deq_ready;
                     @(posedge clk_i) if (nreset_i) if_deq |-> if_deq_ready;
                 endproperty
@@ -414,27 +395,12 @@ module bus #(
                 a_sb_valid_timing: assert property (p_sb_valid_timing)
                     else $error("Assertion failure: Cannot receive sb_valid when not expected.");
 
-                // // Out FIFO specific testing
-                // property p_yumi_inactive_out_fifo_full;
-                //     @(posedge clk_i) if (nreset_i) |yumi_inactive |-> of_enq_ready;
-                // endproperty
-
-                // a_yumi_inactive_out_fifo_full: assert property (p_yumi_inactive_out_fifo_full)
-                //     else $error("Assertion failure: Cannot accept a new request when either out-FIFO is full.");
-
                 property p_of_deq_ready;
                     @(posedge clk_i) if (nreset_i) of_deq |-> of_deq_ready;
                 endproperty
 
                 a_of_deq_ready: assert property (p_of_deq_ready)
                     else $error("Assertion failure: Cannot dequeqe from out-FIFO when not ready.");
-
-                // property p_cache_tx_ahead;
-                //     @(posedge clk_i) if (nreset_i) ~tx_ongoing |-> ~cache_tx_ahead_r;
-                // endproperty
-
-                // a_cache_tx_ahead: assert property (p_cache_tx_ahead)
-                //     else $error("Assertion failure: Cache TXs cannot be ahead of MM TXs when no TX is ongoing.");
 
             `endif
         end
@@ -464,10 +430,9 @@ module bus #(
         a_sb_valid_onehot: assert property (p_sb_valid_onehot)
             else $error("Assertion failure: sb_valid_i must only be asserted by one cache at a time.");
 
-        // tx_done_r in dma_data_width_p == block_width_p case, else $past(tx_done_r)
         property p_sb_valid_deasserted_tx_done;
             @(posedge clk_i) if (nreset_i)
-                |sb_valid_i |=> |sb_valid_i | tx_done_r | $past(tx_done_r) | $past(curr_req_type == op_ld_exclusive);
+                |sb_valid_i |=> |sb_valid_i | $past(tx_done) | $past(curr_req_type == op_ld_exclusive);
         endproperty
         
         a_sb_valid_deasserted_tx_done: assert property (p_sb_valid_deasserted_tx_done)

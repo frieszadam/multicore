@@ -14,10 +14,10 @@ module cache_tb ();
     localparam rom_addr_width_lp = 15;
     
     localparam block_width_lp = 16;
-    localparam sets_lp = 16;
-    localparam ways_lp = 4;
-    localparam dma_data_width_lp = 16;
-    localparam num_caches_lp = 4;
+    localparam sets_lp = 64;
+    localparam ways_lp = 2;
+    localparam dma_data_width_lp = 4;
+    localparam num_caches_lp = 2;
 
     localparam mem_addr_width_lp = 11;
     localparam init_file_lp  = "../../tb/dma_init.mem";
@@ -35,14 +35,6 @@ module cache_tb ();
 
     logic [num_caches_lp-1:0] cc_valid_lo, cc_yumi_li;
     logic [num_caches_lp-1:0] [31:0] cc_rdata_lo;
-
-    // Cache Bus Interface
-    logic cb_ld_ex;
-    logic [num_caches_lp-1:0] cb_valid_lo, cb_yumi_li;
-    logic [num_caches_lp-1:0] [cache_bus_pkt_width_lp-1:0] cb_pkt_lo;
-
-    logic [num_caches_lp-1:0] cb_valid_li;
-    logic [(dma_data_width_lp*32)-1:0] cb_data_li;
 
     // Cache Snoop Controller Interface
     logic [num_caches_lp-1:0] sc_ready, sc_block_hit, sc_rd_tag_state, sc_rdata_en;
@@ -67,6 +59,21 @@ module cache_tb ();
     logic [num_caches_lp-1:0] [rom_addr_width_lp-1:0] core_trace_rom_addr;
     logic [num_caches_lp-1:0] core_done, core_ready_lo, trace_replay_yumi_li;
     logic [num_caches_lp-1:0] [ring_width_lp-1:0] trace_replay_data_li;
+
+    bsg_nonsynth_clock_gen #(
+        .cycle_time_p(core_clk_period_p)
+    ) u_clock_gen (
+        .o(clk)
+    );
+
+    bsg_nonsynth_reset_gen #(
+        .num_clocks_p(1)
+        ,.reset_cycles_lo_p(0)
+        ,.reset_cycles_hi_p(10)
+    ) u_reset_gen (
+        .clk_i(clk)
+        ,.async_reset_o(reset)
+    );
 
     generate
         genvar c;
@@ -136,107 +143,66 @@ module cache_tb ();
                         ,.data_o(core_trace_rom_data[c])
                     );
                 end
+                4: begin : gen_rom4
+                    bsg_core_intf_trace_rom4 #(
+                        .width_p(ring_width_lp+4)
+                        ,.addr_width_p(rom_addr_width_lp)
+                    ) u_core_intf_trace_rom (
+                        .addr_i(core_trace_rom_addr[c])
+                        ,.data_o(core_trace_rom_data[c])
+                    );
+                end
+                5: begin : gen_rom5
+                    bsg_core_intf_trace_rom5 #(
+                        .width_p(ring_width_lp+4)
+                        ,.addr_width_p(rom_addr_width_lp)
+                    ) u_core_intf_trace_rom (
+                        .addr_i(core_trace_rom_addr[c])
+                        ,.data_o(core_trace_rom_data[c])
+                    );
+                end
+                6: begin : gen_rom6
+                    bsg_core_intf_trace_rom6 #(
+                        .width_p(ring_width_lp+4)
+                        ,.addr_width_p(rom_addr_width_lp)
+                    ) u_core_intf_trace_rom (
+                        .addr_i(core_trace_rom_addr[c])
+                        ,.data_o(core_trace_rom_data[c])
+                    );
+                end
+                7: begin : gen_rom7
+                    bsg_core_intf_trace_rom7 #(
+                        .width_p(ring_width_lp+4)
+                        ,.addr_width_p(rom_addr_width_lp)
+                    ) u_core_intf_trace_rom (
+                        .addr_i(core_trace_rom_addr[c])
+                        ,.data_o(core_trace_rom_data[c])
+                    );
+                end
                 default: ;
             endcase
-
-            cache #(
-                .block_width_p(block_width_lp),
-                .sets_p(sets_lp),
-                .ways_p(ways_lp),
-                .dma_data_width_p(dma_data_width_lp)
-            ) u_dut (
-                .clk_i(clk),
-                .nreset_i(nreset),
-
-                // Core Cache Interface
-                .cc_valid_i(cc_valid_li[c]),
-                .cc_ready_o(cc_ready_lo[c]),
-                .cc_pkt_i(cc_pkt_li[c]),
-
-                .cc_valid_o(cc_valid_lo[c]),
-                .cc_rdata_o(cc_rdata_lo[c]),
-
-                // Cache Bus Interface
-                .cb_valid_o(cb_valid_lo[c]),
-                .cb_yumi_i(cb_yumi_li[c]),
-                .cb_pkt_o(cb_pkt_lo[c]),
-
-                .cb_valid_i(cb_valid_li[c]),
-                .cb_ld_ex_i(cb_ld_ex),
-                .cb_data_i(cb_data_li),
-
-                .sc_rd_tag_state_i(sc_rd_tag_state[c]),
-                .sc_rdata_en_i(sc_rdata_en[c]),
-                .sc_raddr_i(sc_raddr[c]),
-                .sc_set_state_i(sc_set_state[c]),
-                .sc_state_invalid_i(sc_state_invalid[c]),
-
-                .sc_ready_o(sc_ready[c]),
-                .sc_block_hit_o(sc_block_hit[c]),
-                .sc_block_state_o(sc_block_state[c]),
-                .sc_rdata_o(sc_rdata[c])
-            );
-
-            snoop_controller #(
-                .dma_data_width_p(dma_data_width_lp)
-            ) u_snoop_controller (
-                .clk_i(clk),
-                .nreset_i(nreset),
-
-                .sc_ready_i(sc_ready[c]),
-                .sc_block_hit_i(sc_block_hit[c]),
-                .sc_block_state_i(sc_block_state[c]),
-                .sc_rdata_i(sc_rdata[c]),
-
-                .sc_rd_tag_state_o(sc_rd_tag_state[c]),
-                .sc_rdata_en_o(sc_rdata_en[c]),
-                .sc_raddr_o(sc_raddr[c]),
-                .sc_set_state_o(sc_set_state[c]),
-                .sc_state_invalid_o(sc_state_invalid[c]),
-
-                .sb_valid_i(sb_valid_li[c]),
-                .sb_last_rx_i(sb_last_rx),
-                .sb_tx_begin_i(sb_tx_begin),
-                .sb_bus_pkt_i(sb_bus_pkt),
-
-                .sb_wait_o(sb_wait[c]),
-                .sb_hit_o(sb_hit[c]),
-                .sb_valid_o(sb_valid_lo[c]),
-                .sb_data_o(sb_data[c])
-            );
-
         end
     endgenerate
 
-    bsg_nonsynth_clock_gen #(
-        .cycle_time_p(core_clk_period_p)
-    ) u_clock_gen (
-        .o(clk)
-    );
-
-    bsg_nonsynth_reset_gen #(
-        .num_clocks_p(1)
-        ,.reset_cycles_lo_p(0)
-        ,.reset_cycles_hi_p(10)
-    ) u_reset_gen (
-        .clk_i(clk)
-        ,.async_reset_o(reset)
-    );
-
-    bus #(
+    memsys_top #(
         .num_caches_p(num_caches_lp),
         .block_width_p(block_width_lp),
+        .sets_p(sets_lp),
+        .ways_p(ways_lp),
         .dma_data_width_p(dma_data_width_lp)
-    ) u_bus (
+    ) u_dut (
         .clk_i(clk),
         .nreset_i(nreset),
 
-        // Cache to Bus
-        .cb_valid_i(cb_valid_lo),
-        .cb_yumi_o(cb_yumi_li),
-        .cb_pkt_i(cb_pkt_lo),
+        // Core Cache Interface
+        .cc_valid_i(cc_valid_li),
+        .cc_ready_o(cc_ready_lo),
+        .cc_pkt_i(cc_pkt_li),
 
-        // Memory to Bus
+        .cc_valid_o(cc_valid_lo),
+        .cc_rdata_o(cc_rdata_lo),
+
+        // Main Memory Interface
         .mem_ready_i(mem_ready),
         .mem_valid_o(mem_req),
 
@@ -245,22 +211,7 @@ module cache_tb ();
 
         .mem_we_o(mem_we),
         .mem_addr_o(mem_addr),
-        .mem_wdata_o(mem_wdata),
-
-        // Bus to Cache
-        .cb_valid_o(cb_valid_li),
-        .cb_data_o(cb_data_li),
-        .cb_ld_ex_o(cb_ld_ex),
-
-        .sb_wait_i(sb_wait),
-        .sb_hit_i(sb_hit),
-        .sb_valid_i(sb_valid_lo),
-        .sb_data_i(sb_data),
-
-        .sb_valid_o(sb_valid_li),
-        .sb_last_rx_o(sb_last_rx),
-        .sb_tx_begin_o(sb_tx_begin),
-        .sb_bus_pkt_o(sb_bus_pkt)
+        .mem_wdata_o(mem_wdata)
     );
 
     main_memory #(
@@ -290,10 +241,10 @@ module cache_tb ();
         generate
             logic [num_caches_lp-1:0] sc_idle_r, cache_idle_r, cache_idle_n;
             for (genvar i = 0; i < num_caches_lp; i++) begin
-                assign sc_idle_r[i] = gen_cache_core[i].u_snoop_controller.control_state_r == '0;
+                assign sc_idle_r[i] = u_dut.gen_cache_snoop_controller[i].u_snoop_controller.control_state_r == '0;
 
-                assign cache_idle_r[i] = gen_cache_core[i].u_dut.cache_state_r == '0;
-                assign cache_idle_n[i] = gen_cache_core[i].u_dut.cache_state_n == '0;
+                assign cache_idle_r[i] = u_dut.gen_cache_snoop_controller[i].u_cache.cache_state_r == '0;
+                assign cache_idle_n[i] = u_dut.gen_cache_snoop_controller[i].u_cache.cache_state_n == '0;
             end
 
             if (num_caches_lp != 1) begin
@@ -307,23 +258,13 @@ module cache_tb ();
 
                 property p_bus_ready_control_state_idle;
                     @(posedge clk) if (nreset)
-                        u_bus.gen_multi_cache.bus_state_r == '0 |-> ~control_state_active;
+                        u_dut.u_bus.gen_multi_cache.bus_state_r == '0 |-> ~control_state_active;
                 endproperty
 
                 a_bus_ready_control_state_idle: assert property (p_bus_ready_control_state_idle)
                     else $error("Assertion failure: All snoop controller must be idle when bus is idle.");
             end
         endgenerate
-
-        // Not true when we allocate an eviction this is not bursted with the read request
-        // property p_bus_ready_prev_cache_done;
-        //     @(posedge clk) if (nreset)
-        //         u_bus.gen_multi_cache.bus_state_r != '0 & u_bus.gen_multi_cache.bus_state_n == '0 |=>
-        //             cache_idle_r[$past(u_bus.tx_cache_id)] | cache_idle_n[$past(u_bus.tx_cache_id)];
-        // endproperty
-
-        // a_bus_ready_prev_cache_done: assert property (p_bus_ready_prev_cache_done)
-        //     else $error("Assertion failure: Previous cache must be fulfilled upon bus transition.");
     `endif 
 
   initial begin

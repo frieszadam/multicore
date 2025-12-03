@@ -33,3 +33,6 @@ gen_rom:
 	done
 
 run_test: gen_rom sim-rtl
+
+gen_sram:
+	python3 generate_sram.py

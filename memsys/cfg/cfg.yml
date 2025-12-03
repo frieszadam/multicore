@@ -1,0 +1,30 @@
+# Set top level for synthesis
+synthesis.inputs.top_module: "memsys_top"
+
+vlsi.inputs:
+  custom_sdc_files:
+    - "constraints.tcl"
+  custom_sdc_files_meta: prependlocal # Prepend path of this config file!
+
+# Placement Constraints
+vlsi.inputs.placement_constraints:
+  - path: "TOP" # (this name isn't actually checked...)
+    type: toplevel
+    width:  2000
+    height: 2000
+    x: 0
+    y: 0
+    margins: {left: 0, right: 0, top: 0, bottom: 0}
+
+# Do not change comments, needed for Python script hooks
+vlsi.inputs.sram_parameters: [
+  # data ram | depth: sets_p*dma_blk_ratio | width: dma_width_p * 32
+  {name: "fakeram_d1024_w32", family: "1rw", depth: 1024, width: 32, mask: True,
+   mux: 1, vt: ""},
+  # tag ram | depth: sets_p | width: tag_width_lp
+  {name: "fakeram_d64_w22", family: "1rw", depth: 64, width: 22, mask: True,
+   mux: 1, vt: ""},
+   # state ram | depth: sets_p | width: ways_p * block_state_width
+  {name: "fakeram_d64_w4", family: "1rw", depth: 64, width: 4, mask: True,
+   mux: 1, vt: ""},
+]

@@ -18,11 +18,7 @@ sim.inputs.tb_input_files: [
   "v/priority_lru.sv",
   "v/main_memory.sv",
 
-  # REVISIT (11/10, autoinclude rom up to num_cache-1)
-  "tb/bsg_core_intf_trace_rom0.v",
-  "tb/bsg_core_intf_trace_rom1.v",
-  "tb/bsg_core_intf_trace_rom2.v",
-  "tb/bsg_core_intf_trace_rom3.v",
+  "tb/bsg_core_intf_trace_rom*.v",
   "tb/cache_tb.sv"
 ]
 sim.inputs.tb_input_files_meta: [subst]
@@ -37,8 +33,3 @@ sim.inputs.tb_incdir_meta: [subst]
 # Macro definitions for simulations
 # sim.inputs.tb_defines: []
 # sim.inputs.tb_defines_meta: [subst]
-
-# Created before simulation start with make gen_rom
-# List of trace files for the simulation
-# sim.inputs.trace_files: []
-# sim.inputs.trace_files_meta: [subst]

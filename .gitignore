@@ -7,3 +7,4 @@ archive/*
 **.tr
 **/*trace_rom*.v
 **/*_init.mem
+**.pyc

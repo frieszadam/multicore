@@ -1,7 +1,7 @@
 `ifndef CACHE_VH
 `define CACHE_VH
 
-// `define DISABLE_TESTING
+`define DISABLE_TESTING
 
 // Macro functions are used to pass parameters to struct declarations
 `define core_cache_pkt_width 69
@@ -12,6 +12,7 @@
     (1 << (5 + dma_data_size_lp))
 
 typedef enum logic [1:0] {op_write_back, op_ld_exclusive, op_ld_shared, op_up_exclusive} bus_req_type_t;
+typedef enum logic [1:0] {s_invalid, s_exclusive, s_shared, s_modified} block_state_t;
 
 `define declare_cache_bus_pkt_t(dma_data_width_p) \
     typedef struct packed {                       \
@@ -33,7 +34,5 @@ typedef enum logic [1:0] {op_write_back, op_ld_exclusive, op_ld_shared, op_up_ex
         logic [31:0] addr;
         logic [31:0] wdata; // write data
     } core_cache_pkt_t;
-
-    typedef enum logic [1:0] {s_invalid, s_exclusive, s_shared, s_modified} block_state_t;
 
 `endif

@@ -1,0 +1,10 @@
+Build Protocol
+
+1. Modify desired parameters in memsys_top by changing the default assignment.
+2. Modify the cfg/cfg.yml vlsi.inputs.sram_parameters to update SRAM depth and
+   width and SRAM name to match.
+3. 'make sram'
+4. Modify build/sram_generator-rundir/generated_v/bsg_mem_1rw_sync_all.v to change
+   all `include '*.svh' paths to reference the absolute path from
+   '../../basejump_stl/hard/fakeram/' and change '.svh' extension to '.vh'
+5. 'make syn', etc.

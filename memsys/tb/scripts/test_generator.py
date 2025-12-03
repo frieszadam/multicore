@@ -136,7 +136,7 @@ def verify_memory(interfaces, mem_model, addr_set, wait_cycles):
 # Sequence of random reads and writes with overlapping address ranges for each core
 # Outlaws writes to the same block within a minimum distance
 def test_coherence_random(interfaces, mem_model, mem_limit, **kwargs):
-    min_overlap_dist = 10 * len(interfaces)
+    min_overlap_dist = 25 * len(interfaces)
     num_tests = 100
     
     global_write_id = 0

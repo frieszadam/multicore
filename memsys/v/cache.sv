@@ -359,7 +359,7 @@ module cache #(
     logic reset, mem_ways_rd;
     assign reset = ~nreset_i;
     
-    logic [ways_p-1:0] mem_tag_wr, mem_tag_valid;
+    logic [ways_p-1:0] mem_tag_wr;
     logic [tag_width_lp-1:0] mem_tag_n;
 
     logic mem_state_wr_any_way, mem_state_valid, mem_state_wr_en;
@@ -384,7 +384,7 @@ module cache #(
     end
     
     assign cc_rdata_src = (cache_state_r == s_rx_rd | cache_state_r == s_alloc_rd)? main_mem_rdata: set_data[way_index][cc_pkt_ib_bit_offset_r +: 32];
-    assign cc_rdata_o   = cc_rdata_src & {32{cc_valid_o & ~cc_pkt_r.we}};
+    assign cc_rdata_o   = cc_rdata_src & {32{~cc_pkt_r.we}};
 
     assign cb_pkt.addr = cb_addr_lo;
     assign cb_valid_o  = send_eviction | cache_state_r == s_alloc_rd | cache_state_r == s_up_ex |
@@ -486,7 +486,6 @@ module cache #(
         mem_tag_n = cc_pkt_r.addr[31-:tag_width_lp];
         for (int w = 0; w < ways_p; w++) begin
             mem_tag_wr[w] = rx_start & (way_index == ways_size_lp'(w));
-            mem_tag_valid[w] = mem_tag_wr[w] | mem_ways_rd;
         end
 
         mem_state_addr = rst_seq_done? (sc_set_state_valid? snp_set_index: set_index): rst_count_r[index_width_lp-1:0];
