@@ -2,9 +2,11 @@
 
 module snoop_controller #(
     parameter dma_data_width_p,
-    
+    parameter block_width_p,
+
     localparam cache_bus_pkt_width_lp = `cache_bus_pkt_width(dma_data_width_p),
-    localparam block_state_width_lp   = $bits(block_state_t)
+    localparam block_state_width_lp   = $bits(block_state_t),
+    localparam offset_width_lp        = $clog2(block_width_p) + 2
 )(
     input logic clk_i,
     input logic nreset_i,
@@ -13,11 +15,13 @@ module snoop_controller #(
     input  logic sb_valid_i,  // Not asserted when this cache's request is under active arb
     input  logic sb_last_rx_i, // Asserted when the bus is awaiting this request's last packet
     input  logic sb_tx_begin_i,
-    input  logic [cache_bus_pkt_width_lp-1:0] sb_bus_pkt_i, // Bus address increments in response to send/receive, but other fields stay the same
+    input  logic [cache_bus_pkt_width_lp-1:0] sb_pkt_i, // Bus address increments in response to send/receive, but other fields stay the same
 
     // Cache <-> Cache Controller
     input  logic sc_ready_i, // When the cache is ready to handle set tag and rd data requests
+    input  logic sc_res_valid_i,
     input  logic sc_block_hit_i,
+    input  logic [31-offset_width_lp:0] sc_res_addr_i,
     input  logic [block_state_width_lp-1:0] sc_block_state_i, // data valid one cycle after sc_rd_tag_state_o
     input  logic [(dma_data_width_p*32)-1:0] sc_rdata_i, // data valid one cycle after sc_rdata_en_o and sc_ready_i
 
@@ -27,6 +31,7 @@ module snoop_controller #(
 
     output logic sc_set_state_o,
     output logic sc_state_invalid_o,
+    output logic sc_clr_res_o,
 
     // Output to Bus
     output logic sb_wait_o, // Asserted if block_hit between s_check_hit and sc_ready
@@ -40,7 +45,7 @@ module snoop_controller #(
     bus_req_type_t bus_pkt_req_type;
     block_state_t sc_block_state;
 
-    assign bus_pkt = sb_bus_pkt_i;
+    assign bus_pkt = sb_pkt_i;
     assign bus_pkt_req_type = bus_req_type_t'(bus_pkt.req_type);
     assign sc_block_state = block_state_t'(sc_block_state_i); // only valid 1 cycle after sc_rd_tag_state_o
 
@@ -95,6 +100,7 @@ module snoop_controller #(
     assign sc_set_state_o = sc_ready_i & ( (control_state_r == s_rd_data & ~set_state_r) |
         (control_state_r == s_set_state ) | (valid_block_hit & (req_type_ex | state_eq_mod | state_eq_ex)) );
     assign sc_state_invalid_o = req_type_ex;
+    assign sc_clr_res_o = sb_valid_i & (bus_pkt.addr[31:offset_width_lp] == sc_res_addr_i) & bus_pkt.lr_sc;
 
     // snoop bus interface
     assign sb_wait_o  = control_state_r != s_idle & control_state_n != s_idle;

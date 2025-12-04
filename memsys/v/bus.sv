@@ -23,7 +23,7 @@ module bus #(
     output logic [num_caches_p-1:0] sb_valid_o,
     output logic sb_last_rx_o,
     output logic sb_tx_begin_o,
-    output logic [cache_bus_pkt_width_lp-1:0] sb_bus_pkt_o,
+    output logic [cache_bus_pkt_width_lp-1:0] sb_pkt_o,
 
     // Memory to Bus
     input  logic mem_ready_i,
@@ -42,14 +42,15 @@ module bus #(
     output logic [(dma_data_width_p*32)-1:0]  cb_data_o
 );
 
-    localparam dma_blk_ratio_lp = block_width_p / dma_data_width_p;
+    localparam dma_blk_ratio_lp      = block_width_p / dma_data_width_p;
     localparam dma_blk_ratio_size_lp = $clog2(dma_blk_ratio_lp);
-    localparam dma_data_size_lp = $clog2(dma_data_width_p);
-    localparam num_cache_size_lp = $clog2(num_caches_p);
-    
+    localparam dma_data_size_lp      = $clog2(dma_data_width_p);
+    localparam num_cache_size_lp     = $clog2(num_caches_p);
+    localparam offset_width_lp       = $clog2(block_width_p) + 2;
+
     `declare_cache_bus_pkt_t(dma_data_width_p);
     cache_bus_pkt_t [num_caches_p-1:0] cb_pkt;
-    cache_bus_pkt_t curr_bus_pkt, sb_bus_pkt;
+    cache_bus_pkt_t curr_bus_pkt, sb_pkt;
     bus_req_type_t curr_req_type;
 
     logic tx_inactive;
@@ -63,10 +64,10 @@ module bus #(
     end
     
     assign curr_req_type = curr_bus_pkt.req_type;
-    assign sb_bus_pkt.req_type = curr_bus_pkt.req_type;
-    assign sb_bus_pkt.wdata = curr_bus_pkt.wdata;
+    assign sb_pkt.req_type = curr_bus_pkt.req_type;
+    assign sb_pkt.wdata = curr_bus_pkt.wdata;
 
-    assign sb_bus_pkt_o  = {cache_bus_pkt_width_lp{|sb_valid_o}} & cache_bus_pkt_t'(sb_bus_pkt);
+    assign sb_pkt_o  = {cache_bus_pkt_width_lp{|sb_valid_o}} & cache_bus_pkt_t'(sb_pkt);
     assign sb_wait_valid = sb_wait_i & ~sb_valid_i;
 
     // block width = dma_data_width vs unequal case
@@ -344,7 +345,7 @@ module bus #(
                 end
             end
 
-            assign sb_bus_pkt.addr = curr_bus_pkt.addr;
+            assign sb_pkt.addr = curr_bus_pkt.addr;
             assign mem_wdata_o  = |sb_valid_i? sb_rdata: curr_bus_pkt.wdata;
 
             // allow simultaneous enq, deq when FIFO full
@@ -411,17 +412,17 @@ module bus #(
         wire logic [31:0] bus_pkt_addr0 = cb_pkt[0].addr;
         wire logic [31:0] bus_pkt_addr1 = cb_pkt[1].addr;
 
-        bus_req_type_t curr_bus_pkt_req_type, sb_bus_pkt_req_type;
-        logic [31:0] curr_bus_pkt_addr, sb_bus_pkt_addr;
-        logic [(32*dma_data_width_p)-1:0] curr_bus_pkt_wdata, sb_bus_pkt_wdata;
+        bus_req_type_t curr_bus_pkt_req_type, sb_pkt_req_type;
+        logic [31:0] curr_bus_pkt_addr, sb_pkt_addr;
+        logic [(32*dma_data_width_p)-1:0] curr_bus_pkt_wdata, sb_pkt_wdata;
 
         assign curr_bus_pkt_req_type = curr_bus_pkt.req_type;
         assign curr_bus_pkt_addr  = curr_bus_pkt.addr;
         assign curr_bus_pkt_wdata = curr_bus_pkt.wdata;
 
-        assign sb_bus_pkt_req_type = sb_bus_pkt.req_type;
-        assign sb_bus_pkt_addr = sb_bus_pkt.addr;
-        assign sb_bus_pkt_wdata = sb_bus_pkt.wdata;
+        assign sb_pkt_req_type = sb_pkt.req_type;
+        assign sb_pkt_addr = sb_pkt.addr;
+        assign sb_pkt_wdata = sb_pkt.wdata;
 
         property p_sb_valid_onehot;
             @(posedge clk_i) if (nreset_i) $onehot0(sb_valid_i);

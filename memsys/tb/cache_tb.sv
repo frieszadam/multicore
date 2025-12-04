@@ -10,7 +10,7 @@ module cache_tb ();
 
     localparam core_clk_freq_p = 125; // MHz
     localparam core_clk_period_p = 1_000_000 / core_clk_freq_p; // ps
-    localparam ring_width_lp = 69;
+    localparam ring_width_lp = 70;
     localparam rom_addr_width_lp = 15;
     
     localparam block_width_lp = 16;
@@ -245,6 +245,13 @@ module cache_tb ();
 
                 assign cache_idle_r[i] = u_dut.gen_cache_snoop_controller[i].u_cache.cache_state_r == '0;
                 assign cache_idle_n[i] = u_dut.gen_cache_snoop_controller[i].u_cache.cache_state_n == '0;
+
+                for (int c = 0; c < num_caches; c++) begin
+                    assign res_addr_overlap[i] = u_dut.gen_cache_snoop_controller[i].u_cache.res_valid_r &
+                    u_dut.gen_cache_snoop_controller[c].u_cache.res_valid_r &
+                    (u_dut.gen_cache_snoop_controller[i].u_cache.res_addr_r == u_dut.gen_cache_snoop_controller[c].u_cache.res_addr_r) & 
+                    (i != c);
+                end
             end
 
             if (num_caches_lp != 1) begin
@@ -263,6 +270,14 @@ module cache_tb ();
 
                 a_bus_ready_control_state_idle: assert property (p_bus_ready_control_state_idle)
                     else $error("Assertion failure: All snoop controller must be idle when bus is idle.");
+
+                property p_lr_sc_reservation_overlap;
+                    @(posedge clk) if (nreset) ~|res_addr_overlap;
+                endproperty
+
+                a_lr_sc_reservation_overlap: assert property (p_lr_sc_reservation_overlap)
+                    else $error("Assertion failure: The same block may not be reserved by multiple cores at once.");
+
             end
         endgenerate
     `endif 

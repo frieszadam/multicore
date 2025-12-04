@@ -68,8 +68,8 @@ def get_random_be():
     valid_be = [0b1111, 0b1100, 0b0110, 0b0011, 0b1000, 0b0100, 0b0010, 0b0001, 0b0000]
     return random.choice(valid_be)
 
-def send_command(hardware_interface, mem_model, we, addr, be, wdata):
-    hardware_interface.send(we, addr, be, wdata)
+def send_command(hardware_interface, mem_model, we, addr, lr_sc, be, wdata):
+    hardware_interface.send(we, addr, lr_sc=lr_sc, be=be, wdata=wdata)
     if we == 1:
         hardware_interface.recv(0)
         mem_model.write(addr, wdata, be)
@@ -80,6 +80,7 @@ def send_command(hardware_interface, mem_model, we, addr, be, wdata):
 # Sequence of random reads and writes with non-overlapping address ranges for each core
 def test_sanity(interfaces, mem_model, mem_limit, **kwargs):
     addr_range_incr = int(mem_limit / num_caches_p)
+    lr_sc = 0
 
     for c, intf in enumerate(interfaces):
         wr_addr_set = set()
@@ -95,18 +96,18 @@ def test_sanity(interfaces, mem_model, mem_limit, **kwargs):
 
             if (random.random() < 0.6):
                 # send read
-                send_command(intf, mem_model, 0, addr, 0b1111, 0)
+                send_command(intf, mem_model, 0, addr, lr_sc, 0b1111, 0)
             elif (random.random() < 0.9):
                 wdata = get_random_wdata()
                 be = get_random_be()
-                send_command(intf, mem_model, 1, addr, be, wdata)
+                send_command(intf, mem_model, 1, addr, lr_sc, be, wdata)
                 wr_addr_set.add(addr)
             else:
                 wait_period = random.randrange(10)
                 intf.wait(wait_period)
         
         for addr in wr_addr_set:
-            send_command(intf, mem_model, 0, addr, 0b1111, 0)
+            send_command(intf, mem_model, 0, addr, lr_sc, 0b1111, 0)
 
 def prune_history(history, global_id, min_dist):
     while history and (global_id - history[0][2] >= min_dist):
@@ -129,7 +130,7 @@ def verify_memory(interfaces, mem_model, addr_set, wait_cycles):
     # Read back all touched addresses from every core
     for addr in addr_set:
         for intf in interfaces:
-            send_command(intf, mem_model, 0, addr, 0b1111, 0)
+            send_command(intf, mem_model, 0, addr, lr_sc, 0b1111, 0)
     
     print(f"Verified {len(addr_set)} unique blocks across {len(interfaces)} cores.")
 
@@ -156,10 +157,10 @@ def test_coherence_random(interfaces, mem_model, mem_limit, **kwargs):
                     break
 
             if random.random() < 0.5:
-                send_command(intf, mem_model, 0, addr, 0b1111, 0)
+                send_command(intf, mem_model, 0, addr, lr_sc, 0b1111, 0)
             else:
                 wdata = get_random_wdata()
-                send_command(intf, mem_model, 1, addr, 0b1111, wdata)
+                send_command(intf, mem_model, 1, addr, lr_sc, 0b1111, wdata)
                 
                 wr_addr_set.add(block_addr)
                 write_history.append((block_addr, c, global_write_id))
@@ -187,7 +188,7 @@ def test_false_sharing(interfaces, mem_model, mem_limit, **kwargs):
             addr = block_addr + offset
             
             wdata = get_random_wdata()
-            send_command(intf, mem_model, 1, addr, 0b1111, wdata)
+            send_command(intf, mem_model, 1, addr, lr_sc, 0b1111, wdata)
 
     verify_memory(interfaces, mem_model, wr_addr_set, 10)
 

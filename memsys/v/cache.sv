@@ -9,7 +9,8 @@ module cache #(
 
     localparam core_cache_pkt_width_lp = `core_cache_pkt_width,
     localparam cache_bus_pkt_width_lp  = `cache_bus_pkt_width(dma_data_width_p),
-    localparam block_state_width_lp    = $bits(block_state_t)
+    localparam block_state_width_lp    = $bits(block_state_t),
+    localparam offset_width_lp         = $clog2(block_width_p) + 2
 )(
     input  logic clk_i,
     input  logic nreset_i,
@@ -38,9 +39,12 @@ module cache #(
 
     input  logic sc_set_state_i,
     input  logic sc_state_invalid_i,
+    input  logic sc_clr_res_i,
 
     output logic sc_ready_o,
+    output logic sc_res_valid_o,
     output logic sc_block_hit_o,
+    output logic [31-offset_width_lp:0] sc_res_addr_o,
     output logic [block_state_width_lp-1:0] sc_block_state_o,
     output logic [(dma_data_width_p*32)-1:0] sc_rdata_o
 );
@@ -51,7 +55,6 @@ module cache #(
     localparam wr_mask_width_lp = dma_data_width_p << 2;
 
     // For indexing
-    localparam offset_width_lp    = $clog2(block_width_p) + 2; // offset within block, add 2 because block size in words
     localparam index_width_lp     = $clog2(sets_p);
     localparam tag_width_lp       = 32 - offset_width_lp - index_width_lp;
     localparam state_width_lp     = $bits(block_state_t);
@@ -102,6 +105,9 @@ module cache #(
     logic [31:0] cc_rdata_src;
     logic [31:0] main_mem_rdata;
 
+    logic res_valid_r, res_valid_n;
+    logic [31-offset_width_lp:0] res_addr_r, res_addr_n;
+    
     typedef enum logic [2:0] {s_idle, s_lookup, s_up_ex, s_alloc_wr, s_alloc_rd, s_rx_rd} cache_control_t;
     cache_control_t cache_state_r, cache_state_n;
 
@@ -131,7 +137,7 @@ module cache #(
         set_data_r  <= set_data;
     end
 
-    logic tx_done, rx_done, rx_start;
+    logic tx_done, rx_done, rx_start, cc_pkt_sc_miss;
     logic read_write_miss, set_full, send_eviction, start_eviction, rd_eviction;
     logic [ways_size_lp-1:0] way_index, way_index_n, way_index_r, block_hit_index;
     logic [ways_p-1:0] block_state_invalid, block_hit;
@@ -231,7 +237,9 @@ module cache #(
         case (cache_state_r)
             s_idle:     cache_state_n = cc_valid_ready? s_lookup: s_idle;
             s_lookup: begin
-                if (read_write_miss) begin
+                if (cc_pkt_sc_miss) begin
+                    cache_state_n = s_idle;
+                end else if (read_write_miss) begin
                     if (set_state[way_index] == s_modified)
                         cache_state_n = tx_done? s_alloc_rd: s_alloc_wr;
                     else
@@ -356,7 +364,7 @@ module cache #(
             main_mem_wdata[cc_pkt_ib_bit_offset_r+24 +:8] = cc_pkt_r.wdata[31:24];
     end
 
-    logic reset, mem_ways_rd;
+    logic reset, mem_ways_rd, cc_pkt_eq_res_addr;
     assign reset = ~nreset_i;
     
     logic [ways_p-1:0] mem_tag_wr;
@@ -384,12 +392,13 @@ module cache #(
     end
     
     assign cc_rdata_src = (cache_state_r == s_rx_rd | cache_state_r == s_alloc_rd)? main_mem_rdata: set_data[way_index][cc_pkt_ib_bit_offset_r +: 32];
-    assign cc_rdata_o   = cc_rdata_src & {32{~cc_pkt_r.we}};
+    assign cc_rdata_o   = cc_rdata_src & {32{~cc_pkt_r.we}} | cc_pkt_sc_miss;
 
     assign cb_pkt.addr = cb_addr_lo;
     assign cb_valid_o  = send_eviction | cache_state_r == s_alloc_rd | cache_state_r == s_up_ex |
         (cache_state_r == s_lookup & read_write_miss & ~start_eviction);
     assign cb_pkt.wdata = set_data[way_index];
+    assign cb_pkt.lr_sc = cc_pkt_r.lr_sc & ~send_eviction;
 
     always_comb begin
         if (send_eviction)
@@ -411,7 +420,7 @@ module cache #(
     logic [ways_p-1:0] snp_block_state_invalid, snp_block_hit;
     logic [ways_size_lp-1:0] snp_way_index_n, snp_way_index_r, snp_way_index, mem_way_index;
     logic [index_width_lp-1:0] snp_set_index; // snp_set_index_r, snp_set_index_n,
-    logic sc_rd_tag_state_r, sc_rd_tag_state_n, sc_set_state_valid;
+    logic sc_rd_tag_state_r, sc_rd_tag_state_n, sc_set_state_valid, sc_clr_res_valid;
     
     // Data stored for forwarding
     logic [tag_width_lp-1:0] mem_tag_wdata_r;
@@ -477,7 +486,32 @@ module cache #(
 
     assign sc_rd_data_valid = sc_ready_o & sc_rdata_en_i;
     assign sc_set_state_valid = sc_ready_o & sc_set_state_i;
+    assign sc_clr_res_valid = sc_ready_o & sc_clr_res_i;
 
+    // Atomic reservation logic
+    always_ff @(posedge clk_i) begin
+        if (~nreset_i) begin
+            res_valid_r <= 1'b0;
+        end else begin
+            res_valid_r <= res_valid_n;
+        end
+
+        res_addr_r <= res_addr_n;
+    end
+
+    assign cc_pkt_eq_res_addr = {set_tag[way_index], cc_pkt_r.addr[offset_width_lp+:index_width_lp]} == res_addr_r;
+    assign cc_pkt_sc_miss = cc_pkt_r.we & cc_pkt_r.lr_sc & ~(cc_pkt_eq_res_addr & res_valid_r);
+    
+    wire logic res_clr = (cc_pkt_eq_res_addr & (send_eviction | (cc_pkt_r.we & cc_pkt_r.lr_sc & cc_valid_ready_r))) | 
+                         (sc_set_state_valid & sc_raddr_i[31:offset_width_lp] == res_addr_r) | 
+                         (sc_clr_res_valid);
+    wire logic res_set = rx_start & cc_pkt_r.lr_sc & ~cc_pkt_r.we;
+    assign res_valid_n = (res_valid_r & ~res_clr) | res_set;
+    
+    assign res_addr_n = res_set? cc_pkt_r.addr[31:offset_width_lp]: res_addr_r;
+    assign sc_res_addr_o  = res_addr_r;
+    assign sc_res_valid_o = res_valid_r;
+    
     // SRAM access logic
     always_comb begin
         // Read every way of the selected set upon transition into s_lookup

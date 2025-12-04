@@ -13,8 +13,8 @@ class HardwareInterface:
   def __init__(self, interface_name, verbose=False):
     self.addr_width_p = 32
     self.data_width_p = 32
-    self.byte_enable_width_p = 4
-    self.send_data_len = self.addr_width_p + self.data_width_p + 1 + self.byte_enable_width_p
+    self.byte_enable_width_p = self.data_width_p // 8
+    self.send_data_len = self.addr_width_p + self.data_width_p + 2 + self.byte_enable_width_p
     self.receive_data_len = self.data_width_p
     self.packet_len =  max(self.send_data_len, self.receive_data_len)
     self.verbose = verbose
@@ -25,7 +25,7 @@ class HardwareInterface:
     self.fwrite = open(os.path.join(out_dir, interface_name + ".tr"), "w")
 
   # send packet
-  def send(self, we, addr, be=0, wdata=0):                
+  def send(self, we, addr, lr_sc=0, be=0, wdata=0):                
     trace = "0001_"
     if self.verbose is True:
       if (we):
@@ -34,7 +34,8 @@ class HardwareInterface:
         print(f"SEND READ : addr=0x{addr:08X}")
 
     # Begin with the 0 padding
-    trace += self.get_bin_str(we, 1) + "_"
+    trace += str(we) + "_"
+    trace += str(lr_sc) + "_"
     trace += self.get_bin_str(be, self.byte_enable_width_p) + "_"
     trace += self.get_bin_str(addr, self.addr_width_p) + "_"
     trace += self.get_bin_str(wdata, self.data_width_p)
