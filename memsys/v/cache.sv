@@ -1,4 +1,4 @@
-`include "v/cache.vh"
+`include "cache.vh"
 
 // REVISIT (11/2, verify expectation of word aligned accesses)
 module cache #(
@@ -266,8 +266,7 @@ module cache #(
     end
 
     logic cache_mem_write, write_dma_block, match_dma_block, sc_rd_data_valid, non_ack_cb_valid, sc_reserved_r;
-    logic [dma_blk_size_ratio_lp-1:0] rx_count_r, tx_count_r;
-    logic [$clog2(sets_p * dma_blk_ratio_lp)-1:0] mem_data_addr_offset;
+    logic [dma_blk_size_ratio_lp-1:0] rx_count_r, tx_count_r, mem_data_addr_offset;
 
     assign cache_mem_write = cc_pkt_r.we & ((cache_state_r == s_lookup & ~read_write_miss & set_state[way_index] != s_shared) |
         (cache_state_r == s_up_ex & cb_valid_i));
@@ -578,7 +577,8 @@ module cache #(
         // state and tag RAM are 2RW access to enable non-blocking snoops
         bsg_mem_2rw_sync_mask_write_bit #(
             .width_p(ways_p * state_width_lp),
-            .els_p(sets_p)
+            .els_p(sets_p),
+            .read_write_same_addr_p(0)
         ) u_mem_state (
             .clk_i,
             .reset_i(reset),

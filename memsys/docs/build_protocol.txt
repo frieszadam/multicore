@@ -5,6 +5,5 @@ Build Protocol
    width and SRAM name to match.
 3. 'make sram'
 4. Modify build/sram_generator-rundir/generated_v/bsg_mem_1rw_sync_all.v to change
-   all `include '*.svh' paths to reference the absolute path from
-   '../../basejump_stl/hard/fakeram/' and change '.svh' extension to '.vh'
+   all `include '*.svh' paths to reference the absolute path from 'BSG_ROOT'
 5. 'make syn', etc.

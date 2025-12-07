@@ -12,7 +12,7 @@ import math
 MEMSYS_TOP_PATH = "v/memsys_top.sv" 
 CFG_YML_PATH = "cfg/cfg.yml"
 GENERATED_V_PATH = "build/sram_generator-rundir/generated_v/bsg_mem_1rw_sync_all.v"
-REL_FAKERAM_PATH = "../../basejump_stl/hard/fakeram/"
+FAKERAM_PATH = os.getenv('BSG_ROOT') + "/hard/fakeram/"
 
 def get_verilog_parameter(content, param_name, default=None):
     """
@@ -137,9 +137,7 @@ def step_4_patch_verilog():
         sys.exit(1)
 
     # Calculate absolute path
-    # Resolves ../../basejump_stl... relative to current working directory
-    abs_base_path = os.path.abspath(REL_FAKERAM_PATH)
-    
+    abs_base_path = FAKERAM_PATH
     # Ensure path ends with slash for cleaner concatenation
     if not abs_base_path.endswith(os.sep):
         abs_base_path += os.sep
@@ -151,17 +149,10 @@ def step_4_patch_verilog():
 
     # Regex to find `include "something.svh"
     # Capture the filename inside the quotes
-    # Replacement: `include "/abs/path/filename.vh"
     
     def replacer(match):
-        filename = match.group(1)
-        # Strip extension .svh if present to avoid .svh.vh, though prompt implies simply changing ext
-        if filename.endswith('.svh'):
-            basename = filename[:-4]
-        else:
-            basename = filename
-            
-        new_path = os.path.join(abs_base_path, basename + ".vh")
+        basename = match.group(1)
+        new_path = os.path.join(abs_base_path, basename)
         return f'`include "{new_path}"'
 
     # Pattern: `include "(*.svh)"

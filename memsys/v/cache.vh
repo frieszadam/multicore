@@ -1,7 +1,7 @@
 `ifndef CACHE_VH
 `define CACHE_VH
 
-`define DISABLE_TESTING
+// `define DISABLE_TESTING
 
 // Macro functions are used to pass parameters to struct declarations
 `define core_cache_pkt_width $bits(core_cache_pkt_t)

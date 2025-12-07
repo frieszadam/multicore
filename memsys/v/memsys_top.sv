@@ -1,11 +1,11 @@
-`include "v/cache.vh"
+`include "cache.vh"
 
 module memsys_top #(
     parameter num_caches_p = 2,
     parameter block_width_p = 16,    // words per block
     parameter sets_p = 64,           // number of sets
     parameter ways_p = 2,            // number of ways
-    parameter dma_data_width_p = 1,  // bus transfer size in words
+    parameter dma_data_width_p = 4,  // bus transfer size in words
 
     localparam core_cache_pkt_width_lp = `core_cache_pkt_width,
     localparam cache_bus_pkt_width_lp  = `cache_bus_pkt_width(dma_data_width_p),
@@ -16,7 +16,6 @@ module memsys_top #(
 
     // Core Cache Interface
     input  logic [num_caches_p-1:0]                               cc_valid_i,
-    input  logic [num_caches_p-1:0]                               cc_lr_sc_i,
     output logic [num_caches_p-1:0]                               cc_ready_o,
     input  logic [num_caches_p-1:0] [core_cache_pkt_width_lp-1:0] cc_pkt_i,
 

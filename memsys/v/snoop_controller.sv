@@ -1,4 +1,4 @@
-`include "v/cache.vh"
+`include "cache.vh"
 
 module snoop_controller #(
     parameter dma_data_width_p,
@@ -100,7 +100,7 @@ module snoop_controller #(
     assign sc_set_state_o = sc_ready_i & ( (control_state_r == s_rd_data & ~set_state_r) |
         (control_state_r == s_set_state ) | (valid_block_hit & (req_type_ex | state_eq_mod | state_eq_ex)) );
     assign sc_state_invalid_o = req_type_ex;
-    assign sc_clr_res_o = sb_valid_i & (bus_pkt.addr[31:offset_width_lp] == sc_res_addr_i) & bus_pkt.lr_sc;
+    assign sc_clr_res_o = sb_valid_i & bus_pkt.lr_sc & (bus_pkt.addr[31:offset_width_lp] == sc_res_addr_i) & sc_res_valid_i;
 
     // snoop bus interface
     assign sb_wait_o  = control_state_r != s_idle & control_state_n != s_idle;

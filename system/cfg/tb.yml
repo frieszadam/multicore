@@ -1,20 +1,17 @@
 # tb.yml - Simulation Testbench Configuration
 
 # Toplevel simulation module name
-sim.inputs.tb_name: "memsys_tb"
+sim.inputs.tb_name: "system_tb"
 
 # List of Verilog testbenches (or other sources) needed for simulations.
 sim.inputs.tb_input_files: [
   # Defines/Packages (keep at the top)
   "${bsg_root}/bsg_misc/bsg_defines.sv",
-
   "${bsg_root}/bsg_test/bsg_nonsynth_clock_gen.sv",
   "${bsg_root}/bsg_test/bsg_nonsynth_reset_gen.sv",
-  "${bsg_root}/bsg_legacy/bsg_fsb/bsg_fsb_node_trace_replay.v",
 
-  "../system/tb/memory_model.sv",
-  "tb/bsg_core_intf_trace_rom*.v",
-  "tb/memsys_tb.sv"
+  "tb/memory_model.sv",
+  "tb/system_tb.sv"
 ]
 sim.inputs.tb_input_files_meta: [subst]
 
@@ -22,6 +19,7 @@ sim.inputs.tb_input_files_meta: [subst]
 sim.inputs.tb_incdir: [
   "${bsg_root}/bsg_misc",
   "v/",
+  "../memsys/v",
   "${bsg_root}/hard/fakeram",
 ]
 

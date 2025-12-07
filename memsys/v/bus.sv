@@ -1,4 +1,4 @@
-`include "v/cache.vh"
+`include "cache.vh"
 
 module bus #(
     parameter num_caches_p,       // number of caches in system

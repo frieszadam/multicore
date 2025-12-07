@@ -3,11 +3,13 @@
 # List of all Verilog source files to include in this build.
 synthesis.inputs.input_files: [
   "${bsg_root}/bsg_misc/bsg_defines.sv",
+  "../memsys/v/cache.vh",
+  "../cv32e40x/rtl/include/cv32e40x_pkg.sv",
+
   "${bsg_root}/hard/fakeram/bsg_mem_1rw_sync_macros.svh",
   "${bsg_root}/hard/fakeram/bsg_mem_1rw_sync_mask_write_bit_macros.svh",
   "${bsg_root}/hard/fakeram/bsg_mem_1rw_sync_mask_write_byte_macros.svh",
 
-  "v/cache.vh",
   "${bsg_root}/bsg_mem/bsg_mem_2r1w_sync.sv",
   "${bsg_root}/bsg_mem/bsg_mem_2r1w_sync_synth.sv",
   "${bsg_root}/bsg_mem/bsg_mem_1rw_sync.sv",
@@ -18,13 +20,18 @@ synthesis.inputs.input_files: [
   "${bsg_root}/bsg_mem/bsg_mem_2rw_sync_mask_write_bit_synth.sv",
   "${bsg_root}/bsg_misc/bsg_expand_bitmask.sv",
 
-  "v/fifo.sv",
-  "v/index_lru.sv",
-  "v/priority_lru.sv",
-  "v/cache.sv",
-  "v/bus.sv",
-  "v/snoop_controller.sv",
-  "v/memsys_top.sv"
+  "../memsys/v/fifo.sv",
+  "../memsys/v/index_lru.sv",
+  "../memsys/v/priority_lru.sv",
+  "../memsys/v/cache.sv",
+  "../memsys/v/bus.sv",
+  "../memsys/v/snoop_controller.sv",
+  "../memsys/v/memsys_top.sv",
+
+  "../cv32e40x/rtl/*.sv",
+  "v/cv32e40x_clock_gate.sv",
+  "v/core_top.sv",
+  "v/system_top.sv"
 ]
 synthesis.inputs.input_files_meta: [append, subst]
 

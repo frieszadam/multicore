@@ -5,9 +5,9 @@ INPUT_CFGS := cfg/cfg.yml cfg/src.yml
 TB_CFGS := cfg/tb.yml
 
 # REVISIT SUBMODULE basejump_stl
-BASEJUMP_STL_PATH := $(realpath ../../basejump_stl)
+BASEJUMP_STL_PATH := $(realpath ../basejump_stl)
 include $(TOP_DIR)/module_top.mk
-export BSG_ROOT=$BASEJUMP_STL_PATH
+export BSG_ROOT = $(BASEJUMP_STL_PATH)
 
 CORE_TRACE_FILE = tb/core_intf
 CORE_TRACE_ROM = bsg_core_intf_trace_rom

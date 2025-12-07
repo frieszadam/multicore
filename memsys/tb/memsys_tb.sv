@@ -1,6 +1,6 @@
 `include "v/cache.vh"
 
-module cache_tb ();
+module memsys_tb ();
 
     // Dump waveform to fsdb file 
     initial begin
@@ -13,11 +13,12 @@ module cache_tb ();
     localparam ring_width_lp = 70;
     localparam rom_addr_width_lp = 15;
     
+    localparam num_caches_lp = 2;
     localparam block_width_lp = 16;
     localparam sets_lp = 64;
     localparam ways_lp = 2;
     localparam dma_data_width_lp = 4;
-    localparam num_caches_lp = 2;
+    localparam mem_delay_lp = 5;
 
     localparam mem_addr_width_lp = 11;
     localparam init_file_lp  = "../../tb/dma_init.mem";
@@ -214,24 +215,24 @@ module cache_tb ();
         .mem_wdata_o(mem_wdata)
     );
 
-    main_memory #(
-        .els_p(2**mem_addr_width_lp),
-        .dma_data_width_p(dma_data_width_lp),
-        .block_width_p(block_width_lp),
+    memory_model #(
+        .words_p(2**mem_addr_width_lp),
+        .width_words_p(dma_data_width_lp),
+        .delay_p(mem_delay_lp),
         .init_file_p(init_file_lp)
     ) u_main_mem (
         .clk_i(clk),
         .nreset_i(nreset),
 
         // Memory to Bus
-        .mem_valid_i(mem_req),
-        .mem_ready_o(mem_ready),
-        .mem_valid_o(mem_done),
+        .valid_i(mem_req),
+        .ready_o(mem_ready),
+        .valid_o(mem_done),
 
-        .mem_we_i(mem_we),
-        .mem_addr_i(mem_addr),
-        .mem_wdata_i(mem_wdata),
-        .mem_data_o(mem_rdata)
+        .we_i(mem_we),
+        .addr_i(mem_addr),
+        .wdata_i(mem_wdata),
+        .data_o(mem_rdata)
     );
 
     // Assertions
@@ -239,18 +240,25 @@ module cache_tb ();
 
     `ifndef DISABLE_TESTING
         generate
-            logic [num_caches_lp-1:0] sc_idle_r, cache_idle_r, cache_idle_n;
+            logic [num_caches_lp-1:0] sc_idle_r, cache_idle_r, cache_idle_n, cache_res_valid, res_addr_overlap;
+            logic [num_caches_lp-1:0] [31:0] cache_res_addr;
+
             for (genvar i = 0; i < num_caches_lp; i++) begin
                 assign sc_idle_r[i] = u_dut.gen_cache_snoop_controller[i].u_snoop_controller.control_state_r == '0;
 
                 assign cache_idle_r[i] = u_dut.gen_cache_snoop_controller[i].u_cache.cache_state_r == '0;
                 assign cache_idle_n[i] = u_dut.gen_cache_snoop_controller[i].u_cache.cache_state_n == '0;
 
-                for (int c = 0; c < num_caches; c++) begin
-                    assign res_addr_overlap[i] = u_dut.gen_cache_snoop_controller[i].u_cache.res_valid_r &
-                    u_dut.gen_cache_snoop_controller[c].u_cache.res_valid_r &
-                    (u_dut.gen_cache_snoop_controller[i].u_cache.res_addr_r == u_dut.gen_cache_snoop_controller[c].u_cache.res_addr_r) & 
-                    (i != c);
+                assign cache_res_valid[i] = u_dut.gen_cache_snoop_controller[i].u_cache.res_valid_r;
+                assign cache_res_addr[i] = u_dut.gen_cache_snoop_controller[i].u_cache.res_addr_r;
+            end
+
+            always_comb begin
+                for (int i = 0; i < num_caches_lp; i++) begin           
+                    for (int c = 0; c < num_caches_lp; c++) begin
+                        res_addr_overlap[i] = cache_res_valid[i] & cache_res_valid[c] &
+                        (cache_res_addr[i] == cache_res_addr[c]) & (i != c);
+                    end
                 end
             end
 
