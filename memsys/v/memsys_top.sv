@@ -179,4 +179,17 @@ module memsys_top #(
         .sb_pkt_o(sb_pkt)
     );
 
+    `ifndef DISABLE_TESTING
+        generate
+            for (genvar c = 0; c < num_caches_p; c++) begin
+                    property p_mem_valid_data_defined;
+                        @(posedge clk_i) if (nreset_i) cc_valid_o[c] |-> cc_rdata_o[c] !== 'x;
+                    endproperty
+
+                    a_mem_valid_data_defined: assert property (p_mem_valid_data_defined)
+                        else $error("Assertion failure: rdata must be defined when valid_o asserted.");
+            end
+        endgenerate
+    `endif
+
 endmodule

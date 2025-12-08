@@ -6,11 +6,11 @@
 #
 
 set clk_period 15.0
-set mem_input_delay [expr {$clk_period / 3}]
-set mem_output_delay [expr {$clk_period / 3}]
+set mem_input_delay [expr {$clk_period / 4}]
+set mem_output_delay [expr {$clk_period / 2}]
 
 set core_input_delay [expr {$clk_period / 4}]
-set core_output_delay [expr {$clk_period / 4}]
+set core_output_delay [expr {$clk_period / 2}]
 
 create_clock -name clk -period $clk_period [get_ports clk_i]
 set_clock_uncertainty 0.100 [get_clocks clk]

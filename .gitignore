@@ -6,5 +6,5 @@ archive/*
 **/hammer.log
 **.tr
 **/*trace_rom*.v
-**/*_init.mem
+**/*.hex
 **.pyc

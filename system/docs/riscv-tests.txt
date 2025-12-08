@@ -1,0 +1,9 @@
+riscv-tests Integration Steps
+
+1. Install a RISC-V cross compiler and export $RISCV=<cross_compiler_abs_path>
+2. Follow riscv-tests setup steps at riscv-tests/README.md
+2a. Run 'configure' with '--with-xlen=32' flag
+2b. Comment out vector benchmarks in riscv-tests/benchmarks/Makefile
+2c. In riscv-tests/benchmarks/Makefile set 
+  RISCV_MARCH ?= rv$(XLEN)ima_zicsr
+  ABI ?= ilp32

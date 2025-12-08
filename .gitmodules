@@ -4,3 +4,6 @@
 [submodule "cv32e40x"]
 	path = cv32e40x
 	url = https://github.com/openhwgroup/cv32e40x.git
+[submodule "riscv-tests"]
+	path = riscv-tests
+	url = https://github.com/riscv-software-src/riscv-tests.git

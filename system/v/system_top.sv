@@ -53,7 +53,7 @@ module system_top #(
         .sets_p(sets_p),
         .ways_p(ways_p),
         .dma_data_width_p(dma_data_width_p)
-    ) u_dut (
+    ) u_memsys (
         .clk_i(clk_i),
         .nreset_i(nreset_i),
 

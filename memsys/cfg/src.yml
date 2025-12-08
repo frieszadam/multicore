@@ -3,9 +3,6 @@
 # List of all Verilog source files to include in this build.
 synthesis.inputs.input_files: [
   "${bsg_root}/bsg_misc/bsg_defines.sv",
-  "${bsg_root}/hard/fakeram/bsg_mem_1rw_sync_macros.svh",
-  "${bsg_root}/hard/fakeram/bsg_mem_1rw_sync_mask_write_bit_macros.svh",
-  "${bsg_root}/hard/fakeram/bsg_mem_1rw_sync_mask_write_byte_macros.svh",
 
   "v/cache.vh",
   "${bsg_root}/bsg_mem/bsg_mem_2r1w_sync.sv",

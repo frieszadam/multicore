@@ -26,7 +26,7 @@ def get_cache_params(cache_dir):
     found_ways = False
     found_addr_width = False
 
-    with open(f"{cache_dir}/tb/cache_tb.sv", 'r') as f:
+    with open(f"{cache_dir}/tb/memsys_tb.sv", 'r') as f:
         for line in f:
             if not found_blocks:
                 match_blocks = re.search(r'localparam block_width_lp = \s*(\d+)', line)

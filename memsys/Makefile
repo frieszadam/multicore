@@ -14,7 +14,7 @@ CORE_TRACE_ROM = bsg_core_intf_trace_rom
 CORE_TRACE_ROM_V = tb/bsg_core_intf_trace_rom
 
 # default DMA memory
-DMA_MEM ?= "dma_init.mem"
+DMA_MEM ?= "dma_init.hex"
 CACHE_DIR = $(abspath .)
 SEED ?= "123"
 VERBOSE ?= "False"

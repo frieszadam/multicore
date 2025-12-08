@@ -80,7 +80,7 @@ module core_top #(
         .scan_cg_en_i             (1'b0),
 
         // Configuration
-        .boot_addr_i              ('0),
+        .boot_addr_i              (`INSTR_OFFSET),
         .mtvec_addr_i             ('0),
         .dm_halt_addr_i           ('0),
         .dm_exception_addr_i      ('0),

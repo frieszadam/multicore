@@ -21,7 +21,7 @@ module memsys_tb ();
     localparam mem_delay_lp = 5;
 
     localparam mem_addr_width_lp = 11;
-    localparam init_file_lp  = "../../tb/dma_init.mem";
+    localparam init_file_lp  = "../../tb/dma_init.hex";
 
     localparam core_cache_pkt_width_lp = `core_cache_pkt_width;
     localparam cache_bus_pkt_width_lp  = `cache_bus_pkt_width(dma_data_width_lp);

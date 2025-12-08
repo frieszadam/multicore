@@ -108,8 +108,8 @@ module cache #(
     logic res_valid_r, res_valid_n;
     logic [31-offset_width_lp:0] res_addr_r, res_addr_n;
     
-    typedef enum logic [2:0] {s_idle, s_lookup, s_up_ex, s_alloc_wr, s_alloc_rd, s_rx_rd} cache_control_t;
-    cache_control_t cache_state_r, cache_state_n;
+    typedef enum logic [2:0] {s_idle, s_lookup, s_up_ex, s_alloc_wr, s_alloc_rd, s_rx_rd} cache_state_t;
+    cache_state_t cache_state_r, cache_state_n;
 
     assign cc_valid_ready = cc_valid_i & cc_ready_o;
     assign set_index = cc_valid_ready? cc_pkt.addr[offset_width_lp+:index_width_lp]: set_index_r;

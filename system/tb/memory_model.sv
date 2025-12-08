@@ -22,7 +22,7 @@ module memory_model #(
     output logic [(width_words_p*32)-1:0] data_o
 );
 
-    logic valid_n;
+    logic valid_n, nreset_r;
     logic [(width_words_p*32)-1:0] rdata_r, rdata_n;
     logic [31:0] data_r [words_p-1:0];
     logic [31:0] data_n [words_p-1:0];
@@ -33,28 +33,27 @@ module memory_model #(
     logic [addr_width_lp-1:0] new_addr;
     assign new_addr = addr_i[2 +: addr_width_lp];
 
+    always_ff @(posedge clk_i)
+        nreset_r <= nreset_i;
+
     generate
         if (delay_p == 1) begin : gen_single_cycle_delay
-            assign ready_o = 1'b1;
+            assign ready_o = nreset_r & nreset_i;
 
-            assign mem_read = valid_i & ~we_i;
-            assign mem_write = valid_i & we_i;
-            assign mem_addr = new_addr;
+            assign mem_read  = ready_o & valid_i & ~we_i;
+            assign mem_write = ready_o & valid_i & we_i;
+            assign mem_addr  = new_addr;
             assign mem_wdata = wdata_i;
 
         end else begin : gen_multi_cycle_delay
             logic [delay_p-1:0] valid_shifter_r, valid_shifter_n, we_shifter_r, we_shifter_n;
             logic [delay_p-1:0] [addr_width_lp-1:0] addr_shifter_r, addr_shifter_n;
             logic [delay_p-1:0] [(width_words_p*32)-1:0] wdata_shifter_r, wdata_shifter_n;
-            // logic [addr_width_lp-1:0] addr_shifter_r [delay_p-1:0];
-            // logic [addr_width_lp-1:0] addr_shifter_n [delay_p-1:0];
-            // logic [(width_words_p*32)-1:0] wdata_shifter_r [delay_p-1:0];
-            // logic [(width_words_p*32)-1:0] wdata_shifter_n [delay_p-1:0];
             logic addr_contig;
 
             always_comb begin
                 addr_contig = new_addr == addr_shifter_r[0] | (new_addr + width_words_p) == addr_shifter_r[0];
-                ready_o = ~|valid_shifter_r[delay_p-2:0] | (valid_shifter_r[0] & addr_contig);
+                ready_o = nreset_r & nreset_i & ~|valid_shifter_r[delay_p-2:0] | (valid_shifter_r[0] & addr_contig);
 
                 valid_shifter_n = {valid_shifter_r[delay_p-2:0], ready_o & valid_i};
                 we_shifter_n    = {we_shifter_r[delay_p-2:0], we_i};
@@ -122,7 +121,6 @@ module memory_model #(
 
         a_mem_valid_delay: assert property (p_mem_valid_delay)
             else $error("Assertion failure: valid_o must be asserted delay_p cycles after accepted req.");
-
     `endif
 
 endmodule
