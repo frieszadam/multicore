@@ -43,5 +43,10 @@ Synthesis (Optional): Cadence Genus.
 
 To run the default coherence stress test (verifying data consistency across cores):
 
-cd memsys
+cd ee477-hammer-cad
+make install-tools
+touch 'py/__init__.py'
+cd ../basejump_stl
+git checkout master
+cd ../memsys
 make run_test TESTCASE=coherence NUM_CACHE=2

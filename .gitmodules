@@ -7,3 +7,6 @@
 [submodule "riscv-tests"]
 	path = riscv-tests
 	url = https://github.com/riscv-software-src/riscv-tests.git
+[submodule "ee477-hammer-cad"]
+	path = ee477-hammer-cad
+	url = https://github.com/bsg-external/ee477-hammer-cad.git
