@@ -46,7 +46,7 @@ def step_2_update_cfg(params):
 
     log2_block_width = math.ceil(math.log2(params['block_width_p']))
     log2_sets = math.ceil(math.log2(params['sets_p']))
-    tag_width = 32 - log2_block_width - log2_sets
+    tag_width = 32 - (log2_block_width + 2) - log2_sets
 
     # Calculate target values
     ram_configs = [

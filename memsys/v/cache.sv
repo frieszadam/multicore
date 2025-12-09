@@ -1,6 +1,5 @@
 `include "cache.vh"
 
-// REVISIT (11/2, verify expectation of word aligned accesses)
 module cache #(
     parameter block_width_p,      // words per block
     parameter sets_p,            // number of sets
@@ -51,7 +50,7 @@ module cache #(
 
     // For counting
     localparam num_blocks_lp    = sets_p * ways_p;
-    localparam ways_size_lp     = $clog2(ways_p);
+    localparam ways_size_lp     = (ways_p == 1)? 1: $clog2(ways_p);
     localparam wr_mask_width_lp = dma_data_width_p << 2;
 
     // For indexing
@@ -265,7 +264,7 @@ module cache #(
             cache_state_r <= cache_state_n;
     end
 
-    logic cache_mem_write, write_dma_block, match_dma_block, sc_rd_data_valid, non_ack_cb_valid, sc_reserved_r;
+    logic cache_mem_write, write_dma_block, match_dma_block, sc_rd_data_valid, non_ack_cb_valid, sc_rd_data_valid_r, sc_reserved_r;
     logic [dma_blk_size_ratio_lp-1:0] rx_count_r, tx_count_r, mem_data_addr_offset;
 
     assign cache_mem_write = cc_pkt_r.we & ((cache_state_r == s_lookup & ~read_write_miss & set_state[way_index] != s_shared) |
@@ -416,7 +415,7 @@ module cache #(
     logic [ways_p-1:0] [state_width_lp-1:0] snp_state_rdata;
     logic [ways_p-1:0] [state_width_lp-1:0] snp_mem_state_rdata;
 
-    logic [ways_p-1:0] snp_block_state_invalid, snp_block_hit;
+    logic [ways_p-1:0] snp_block_state_valid, snp_block_hit;
     logic [ways_size_lp-1:0] snp_way_index_n, snp_way_index_r, snp_way_index, mem_way_index;
     logic [index_width_lp-1:0] snp_set_index; // snp_set_index_r, snp_set_index_n,
     logic sc_rd_tag_state_r, sc_rd_tag_state_n, sc_set_state_valid, sc_clr_res_valid;
@@ -433,8 +432,8 @@ module cache #(
             snp_tag_rdata[w] = fwd_snp_tag_wdata_r[w]? mem_tag_wdata_r: snp_mem_tag_rdata[w];
             snp_state_rdata[w] = fwd_snp_state_wdata_r[w]? mem_state_wdata_r: snp_mem_state_rdata[w];
 
-            snp_block_state_invalid[w] = snp_state_rdata[w] == s_invalid;
-            snp_block_hit[w] = sc_rd_tag_state_r & ~snp_block_state_invalid[w] & (snp_tag_rdata[w] == snp_tag_r);
+            snp_block_state_valid[w] = snp_state_rdata[w] != s_invalid;
+            snp_block_hit[w] = sc_rd_tag_state_r & snp_block_state_valid[w] & (snp_tag_rdata[w] == snp_tag_r);
         end
 
         snp_way_index_n = '0;
@@ -457,14 +456,14 @@ module cache #(
 
             fwd_snp_tag_wdata_r   <= '0;
             fwd_snp_state_wdata_r <= '0;
-            sc_reserved_r         <= 1'b0;
+            sc_rd_data_valid_r    <= 1'b0;
         end else begin
             sc_rd_tag_state_r <= sc_rd_tag_state_i;
             snp_way_index_r   <= sc_rd_tag_state_r? snp_way_index_n: snp_way_index_r;
 
             fwd_snp_tag_wdata_r   <= fwd_snp_tag_wdata_n;
             fwd_snp_state_wdata_r <= fwd_snp_state_wdata_n;
-            sc_reserved_r         <= sc_rd_data_valid; // reserved during read loop to preserve consistency
+            sc_rd_data_valid_r    <= sc_rd_data_valid; // reserved during read loop to preserve consistency
         end
 
             mem_tag_wdata_r   <= mem_tag_n;
@@ -475,17 +474,18 @@ module cache #(
         // snp_set_index_r <= sc_rd_tag_state_i? snp_set_index_n: snp_set_index_r;
     end
     
-    wire logic snp_set_index_eq = snp_set_index == set_index;
+    wire logic snp_set_index_eq  = snp_set_index == set_index;
     assign fwd_snp_tag_wdata_n   = {ways_p{snp_set_index_eq}} & mem_tag_wr;
     assign fwd_snp_state_wdata_n = {ways_p{snp_set_index_eq}} & mem_state_wr;
 
     assign sc_block_state_o = snp_state_rdata[snp_way_index] & {block_state_width_lp{sc_rd_tag_state_r}};
     assign sc_block_hit_o = |snp_block_hit;
-    assign sc_rdata_o = mem_data_rdata[snp_way_index];
+    assign sc_rdata_o = mem_data_rdata[snp_way_index_r];
 
-    assign sc_rd_data_valid = sc_ready_o & sc_rdata_en_i;
+    assign sc_rd_data_valid   = sc_ready_o & sc_rdata_en_i;
     assign sc_set_state_valid = sc_ready_o & sc_set_state_i;
-    assign sc_clr_res_valid = sc_ready_o & sc_clr_res_i;
+    assign sc_clr_res_valid   = sc_ready_o & sc_clr_res_i;
+    assign sc_reserved_r      = sc_rd_data_valid_r;
 
     // Atomic reservation logic
     always_ff @(posedge clk_i) begin
@@ -574,11 +574,10 @@ module cache #(
 
     generate
 
-        // state and tag RAM are 2RW access to enable non-blocking snoops
-        bsg_mem_2rw_sync_mask_write_bit #(
+        // state and tag RAM are 2 read ported access to enable non-blocking snoops
+        mem_2r1w_sync_mask_write_bit #(
             .width_p(ways_p * state_width_lp),
-            .els_p(sets_p),
-            .read_write_same_addr_p(0)
+            .els_p(sets_p)
         ) u_mem_state (
             .clk_i,
             .reset_i(reset),
@@ -594,34 +593,29 @@ module cache #(
             // snoop access ports
             .b_v_i(sc_rd_tag_state_i),
             .b_addr_i(snp_set_index),
-            .b_w_i(1'b0),
-            .b_w_mask_i('0),
-            .b_data_i('0),
             .b_data_o(snp_state_rdata_full)
         );
 
         for (w = 0; w < ways_p; w++) begin : gen_ram
 
-            bsg_mem_2r1w_sync #(
+            mem_2r1w_sync #(
                 .width_p(tag_width_lp),
                 .els_p(sets_p)
             ) u_mem_tag (
                 .clk_i,
                 .reset_i(reset),
 
-                // core access ports
-                .w_v_i(mem_tag_wr[w]),
-                .w_addr_i(set_index),
-                .w_data_i(mem_tag_n),
-                
-                .r0_v_i(mem_ways_rd),
-                .r0_addr_i(set_index),
-                .r0_data_o(mem_tag_rdata[w]),
+                // core access ports                
+                .a_v_i(mem_ways_rd | mem_tag_wr[w]),
+                .a_w_i(mem_tag_wr[w]),
+                .a_addr_i(set_index),
+                .a_data_i(mem_tag_n),
+                .a_data_o(mem_tag_rdata[w]),
                 
                 // snoop access ports
-                .r1_v_i(snp_tag_rd_valid[w]),
-                .r1_addr_i(snp_set_index),
-                .r1_data_o(snp_mem_tag_rdata[w])
+                .b_v_i(snp_tag_rd_valid[w]),
+                .b_addr_i(snp_set_index),
+                .b_data_o(snp_mem_tag_rdata[w])
             );
 
             // Memory is structured so that each address hold dma_data_width_p words
@@ -883,7 +877,6 @@ module cache #(
         a_dma_data_width_max: assert property (p_dma_data_width_max)
             else $error("Assertion failure: dma_data_width_p cannot be larger than block_width_p.");
 
-        // REVISIT (11/6, COV) -- how to view results without URG?
         covergroup cg_cache_state @(posedge clk_i);
             coverpoint cache_state_r {
                 bins state_coverage[] = { s_idle, s_lookup, s_alloc_rd, s_rx_rd, s_alloc_wr };

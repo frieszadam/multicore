@@ -105,7 +105,7 @@ module snoop_controller #(
     // snoop bus interface
     assign sb_wait_o  = control_state_r != s_idle & control_state_n != s_idle;
     assign sb_valid_o = sc_rd_data_valid_r;
-    assign sb_data_o  = {(dma_data_width_p*32){sb_valid_o}} & sc_rdata_i;
+    assign sb_data_o  = sc_rdata_i;
     assign sb_hit_o   = valid_block_hit;
 
     `ifndef DISABLE_TESTING
@@ -117,12 +117,12 @@ module snoop_controller #(
         a_no_upgrade_from_exclusive: assert property (p_no_upgrade_from_exclusive)
             else $error("Assertion failure: An upgrade request cannot come when this cache has the block exclusively.");
 
-        // property p_set_state_after_rd_state;
-        //     @(posedge clk_i) if (nreset_i) sc_set_state_o |-> $past(sc_rd_tag_state_o);
-        // endproperty
+        property p_data_tag_read_onehot0;
+            @(posedge clk_i) if (nreset_i) $onehot0(sc_rdata_en_o, sc_rd_tag_state_o); 
+        endproperty
 
-        // a_set_state_after_rd_state: assert property (p_set_state_after_rd_state)
-        //     else $error("Assertion failure: A cache block's state can only be set the cycle after reading the block's state.");
+        a_data_tag_read_onehot0: assert property (p_data_tag_read_onehot0)
+            else $error("Assertion failure: Cannot read tag and data in same clock cycle, conflicts with snp_way_index design.");
     `endif
 
 endmodule

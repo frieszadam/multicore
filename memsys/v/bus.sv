@@ -67,7 +67,7 @@ module bus #(
     assign sb_pkt.req_type = curr_bus_pkt.req_type;
     assign sb_pkt.wdata = curr_bus_pkt.wdata;
 
-    assign sb_pkt_o  = {cache_bus_pkt_width_lp{|sb_valid_o}} & cache_bus_pkt_t'(sb_pkt);
+    assign sb_pkt_o  = cache_bus_pkt_t'(sb_pkt);
     assign sb_wait_valid = sb_wait_i & ~sb_valid_i;
 
     // block width = dma_data_width vs unequal case
@@ -223,7 +223,7 @@ module bus #(
                     tx_cache_id_dec[c] = tx_cache_id == num_cache_size_lp'(c);
                 end
 
-                tx_ongoing = (bus_state_r != s_ready) | tx_begin;
+                tx_ongoing = (bus_state_r != s_ready) | of_deq_ready;
                 sb_valid_o = ~tx_cache_id_dec & {num_caches_p{tx_ongoing}};
 
                 sb_rd_index = '0;
@@ -279,7 +279,7 @@ module bus #(
             assign cb_ld_ex_o  = ~ld_shared_r;
             
             assign sb_rdata  = sb_data_i[sb_rd_index];
-            assign cb_data_o = |sb_valid_i? sb_rdata: mem_data_i; // (|sb_valid_i | (bus_state_r == s_ld_cache))?
+            assign cb_data_o = |sb_valid_i? sb_rdata: mem_data_i;
 
             assign mem_we_o = |{curr_req_type == op_write_back, sb_valid_i};
             assign sb_tx_begin_o = (bus_state_r == s_ready) & tx_begin;

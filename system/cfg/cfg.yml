@@ -1,38 +1,30 @@
-# cfg.yml - Main hammer config file
-
 # Set top level for synthesis
-synthesis.inputs.top_module: "cache"
+synthesis.inputs.top_module: "system_top"
 
-# Don't synthesize these gate-level netlist modules
-synthesis.inputs.preserve_modules: []
-
-# Turn-off clock gating, issue with sky130 latch model in some clock gate cells
-# when coming out of x leading to failed simulations.
-synthesis.clock_gating_mode: ""
-
-par.innovus.floorplan_mode: "generateplusmanual"
-# REVISIT investigate
-#par.innovus.floorplan_script_contents: "
-#  create_fence -name guts/link_downstream -area 0 0 240 240 \ncreate_fence -name guts/link_upstream -area 365 365 500 500 \n"
-
-# Custom SDC constraints
 vlsi.inputs:
-  # You can add SDC constraints directly here (list of strings)
-  custom_sdc_constraints: []
-
-  # Additional SDC files to read
   custom_sdc_files:
-
+    - "constraints.tcl"
   custom_sdc_files_meta: prependlocal # Prepend path of this config file!
 
 # Placement Constraints
 vlsi.inputs.placement_constraints:
   - path: "TOP" # (this name isn't actually checked...)
     type: toplevel
-    # Define chip dimensions
-    width:  500
-    height: 500
+    width:  2000
+    height: 2000
     x: 0
     y: 0
     margins: {left: 0, right: 0, top: 0, bottom: 0}
 
+# Do not change comments, needed for Python script hooks
+vlsi.inputs.sram_parameters: [
+  # data ram | depth: sets_p*dma_blk_ratio | width: dma_width_p * 32
+  {name: "fakeram_d256_w128", family: "1rw", depth: 256, width: 128, mask: True,
+   mux: 1, vt: ""},
+  # tag ram | depth: sets_p | width: tag_width_lp
+  {name: "fakeram_d64_w20", family: "1rw", depth: 64, width: 20, mask: True,
+   mux: 1, vt: ""},
+   # state ram | depth: sets_p | width: ways_p * block_state_width
+  {name: "fakeram_d64_w4", family: "1rw", depth: 64, width: 4, mask: True,
+   mux: 1, vt: ""},
+]

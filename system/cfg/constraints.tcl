@@ -5,41 +5,16 @@
 # you may manually define constraints here as well.
 #
 
-set CORE_CLOCK_PERIOD      6.7
-set IO_MASTER_CLOCK_PERIOD 40
+set clk_period 15.0
+set mem_input_delay [expr {$clk_period / 4}]
+set mem_output_delay [expr {$clk_period / 2}]
 
-# << arguments >>
-# bsg_chip_timing_constraint
-#     [package
-#     [reset_port]
-#     [core_clk_port]
-#     [core_clk_name]
-#     [core_clk_period]
-#     [master_io_clk_port]
-#     [master_io_clk_name]
-#     [master_io_clk_period]
-#     [create_core_clk]
-#     [create_master_clk]
-#     [input_cell_rise_fall_difference]
-#     [output_cell_rise_fall_difference_A]
-#     [output_cell_rise_fall_difference_B]
-#     [output_cell_rise_fall_difference_C]
-#     [output_cell_rise_fall_difference_D]
+create_clock -name clk -period $clk_period [get_ports clk_i]
+set_clock_uncertainty 0.100 [get_clocks clk]
 
-bsg_chip_timing_constraint    \
-    ucsd_bsg_332              \
-    [get_ports p_reset_i]     \
-    [get_ports p_misc_L_4_i]  \
-    core_clk                  \
-    ${CORE_CLOCK_PERIOD}      \
-    [get_ports p_PLL_CLK_i]   \
-    master_io_clk             \
-    ${IO_MASTER_CLOCK_PERIOD} \
-    1                         \
-    1                         \
-    0                         \
-    0                         \
-    0                         \
-    0                         \
-    0 
+set_input_delay  $mem_input_delay -max -clock [get_clocks clk] [all_inputs]
+set_output_delay $mem_output_delay -max -clock [get_clocks clk] [all_outputs]
 
+# Always set the input/output delay as 0 for clock hold checks
+set_input_delay  0.0 -min -clock [get_clocks clk] [all_inputs]
+set_output_delay 0.0 -min -clock [get_clocks clk] [all_outputs]

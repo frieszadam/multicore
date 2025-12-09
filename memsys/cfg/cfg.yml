@@ -22,7 +22,7 @@ vlsi.inputs.sram_parameters: [
   {name: "fakeram_d256_w128", family: "1rw", depth: 256, width: 128, mask: True,
    mux: 1, vt: ""},
   # tag ram | depth: sets_p | width: tag_width_lp
-  {name: "fakeram_d64_w22", family: "1rw", depth: 64, width: 22, mask: True,
+  {name: "fakeram_d64_w20", family: "1rw", depth: 64, width: 20, mask: True,
    mux: 1, vt: ""},
    # state ram | depth: sets_p | width: ways_p * block_state_width
   {name: "fakeram_d64_w4", family: "1rw", depth: 64, width: 4, mask: True,

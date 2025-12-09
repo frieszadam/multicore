@@ -8,3 +8,4 @@ archive/*
 **/*trace_rom*.v
 **/*.hex
 **.pyc
+memsys/archive_reports/*

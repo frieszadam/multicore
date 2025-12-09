@@ -15,8 +15,8 @@ module memsys_tb ();
     
     localparam num_caches_lp = 2;
     localparam block_width_lp = 16;
-    localparam sets_lp = 64;
-    localparam ways_lp = 2;
+    localparam sets_lp = 128;
+    localparam ways_lp = 1;
     localparam dma_data_width_lp = 4;
     localparam mem_delay_lp = 5;
 

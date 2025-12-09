@@ -1,9 +1,0 @@
-Bus Specification
-
-The bus coordinates communication between main memory and all outer processor caches by
-fairly arbitrating requests. Burst data access is enabled in the case that the dma_tx 
-size is less than the cache block size - to do this the bus tracks ongoing transactions
-and forwards these without rearbitration. 
-
-The bus also provides the location for caches to snoop on main memory transactions which
-is vital for cache coherency.

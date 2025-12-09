@@ -4,7 +4,6 @@ OBJ_DIR := build
 INPUT_CFGS := cfg/cfg.yml cfg/src.yml
 TB_CFGS := cfg/tb.yml
 
-# REVISIT SUBMODULE basejump_stl
 BASEJUMP_STL_PATH := $(realpath ../basejump_stl)
 include $(TOP_DIR)/module_top.mk
 export BSG_ROOT = $(BASEJUMP_STL_PATH)
@@ -36,3 +35,9 @@ run_test: gen_rom sim-rtl
 
 gen_sram:
 	python3 generate_sram.py
+
+save_report:
+	./save_report.sh
+
+clean_reports:
+	rm -r archive_reports
